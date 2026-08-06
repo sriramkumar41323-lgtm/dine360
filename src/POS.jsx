@@ -1,0 +1,585 @@
+import { useState, useEffect } from 'react';
+import Receipt from './Receipt';
+
+const CATEGORIES = ["All", "Starters", "Main Course", "Biryanis", "Breads", "Beverages"];
+
+const INITIAL_TABLES = [
+    { id: 1, num: "01", cap: 4, status: "empty", bill: 0 },
+    { id: 2, num: "02", cap: 2, status: "occupied", bill: 1250 },
+    { id: 3, num: "03", cap: 4, status: "empty", bill: 0 },
+    { id: 4, num: "04", cap: 6, status: "reserved", bill: 0, time: "7:30 PM" },
+    { id: 5, num: "05", cap: 2, status: "occupied", bill: 480 },
+    { id: 6, num: "06", cap: 4, status: "empty", bill: 0 },
+];
+
+const FALLBACK_MENU = [
+    { id: 1, item_id: 1, name: "Paneer Tikka", price: 280, category: "Starters", type: "veg" },
+    { id: 2, item_id: 2, name: "Chicken 65", price: 320, category: "Starters", type: "non-veg" },
+    { id: 3, item_id: 3, name: "Butter Chicken", price: 450, category: "Main Course", type: "non-veg" },
+    { id: 4, item_id: 4, name: "Dal Makhani", price: 290, category: "Main Course", type: "veg" },
+    { id: 5, item_id: 5, name: "Hyderabadi Dum Biryani", price: 380, category: "Biryanis", type: "non-veg" },
+    { id: 6, item_id: 6, name: "Veg Pulao", price: 250, category: "Biryanis", type: "veg" },
+    { id: 7, item_id: 7, name: "Garlic Naan", price: 60, category: "Breads", type: "veg" },
+    { id: 8, item_id: 8, name: "Tandoori Roti", price: 40, category: "Breads", type: "veg" },
+    { id: 9, item_id: 9, name: "Fresh Lime Soda", price: 90, category: "Beverages", type: "veg" },
+    { id: 10, item_id: 10, name: "Mango Lassi", price: 120, category: "Beverages", type: "veg" }
+];
+
+const ipcRenderer = typeof window !== 'undefined' && window.require ? window.require('electron').ipcRenderer : null;
+
+export default function POS({ onNavigate, currentUser }) {
+    const isManager = currentUser?.role === 'manager';
+    const [menuItems, setMenuItems] = useState([]);
+    const [theme, setTheme] = useState("fast-food");
+    const [view, setView] = useState("menu");
+    const [activeCategory, setActiveCategory] = useState("All");
+    const [tables, setTables] = useState(INITIAL_TABLES);
+    const [orderType, setOrderType] = useState("Dine-In");
+    const [selectedTable, setSelectedTable] = useState(1);
+    const [quickCart, setQuickCart] = useState([]);
+    const [tableCarts, setTableCarts] = useState({});
+    const [completedTicket, setCompletedTicket] = useState(null);
+    const [printers, setPrinters] = useState([]);
+    const [selectedPrinter, setSelectedPrinter] = useState('');
+    const [printStatus, setPrintStatus] = useState(null);
+
+    useEffect(() => {
+        let isMounted = true;
+        async function fetchPrinters() {
+            if (ipcRenderer && ipcRenderer.invoke) {
+                try {
+                    const list = await ipcRenderer.invoke('get-printers');
+                    if (isMounted && Array.isArray(list)) setPrinters(list);
+                } catch (err) {
+                    console.error('Failed to get printers:', err);
+                }
+            } else if (window.electronAPI && window.electronAPI.getPrinters) {
+                try {
+                    const list = await window.electronAPI.getPrinters();
+                    if (isMounted && Array.isArray(list)) setPrinters(list);
+                } catch (err) {
+                    console.error('Failed to get printers:', err);
+                }
+            }
+        }
+        fetchPrinters();
+        return () => { isMounted = false; };
+    }, []);
+
+    const handlePrintReceipt = async () => {
+        setPrintStatus('Sending to Printer...');
+        try {
+            let result = null;
+            if (ipcRenderer && ipcRenderer.invoke) {
+                result = await ipcRenderer.invoke('print-receipt', selectedPrinter || undefined);
+            } else if (window.electronAPI && window.electronAPI.printReceipt) {
+                result = await window.electronAPI.printReceipt(selectedPrinter || undefined);
+            } else {
+                window.print();
+                result = { success: true, silent: false };
+            }
+
+            if (result && result.success) {
+                const msg = result.silent === false ? 'Opened System Print Dialog' : 'Printed Successfully!';
+                setPrintStatus(msg);
+                setTimeout(() => setPrintStatus(null), 3500);
+            } else {
+                setPrintStatus(`Print Failed: ${result?.error || 'No thermal printer connected'}`);
+            }
+        } catch (err) {
+            console.error('Printing error:', err);
+            setPrintStatus(`Print Error: ${err.message || 'Printer unreachable'}`);
+        }
+    };
+
+    useEffect(() => {
+        let isMounted = true;
+
+        if (ipcRenderer) {
+            ipcRenderer.once('get-inventory-response', (event, response) => {
+                if (isMounted && response && response.success) {
+                    const fetchedItems = (response.items || []).map(i => ({
+                        ...i,
+                        id: i.item_id || i.id
+                    }));
+                    setMenuItems(fetchedItems);
+                }
+            });
+            ipcRenderer.send('get-inventory');
+        } else if (window.electronAPI?.getInventory) {
+            const cleanup = window.electronAPI.onGetInventoryResponse((res) => {
+                if (cleanup) cleanup();
+                if (isMounted && res && res.success) {
+                    const fetchedItems = (res.items || []).map(i => ({
+                        ...i,
+                        id: i.item_id || i.id
+                    }));
+                    setMenuItems(fetchedItems);
+                }
+            });
+            window.electronAPI.getInventory();
+        } else {
+            setTimeout(() => {
+                if (isMounted) setMenuItems(FALLBACK_MENU);
+            }, 0);
+        }
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
+
+    const accentColor = theme === "fast-food" ? "bg-orange-500 hover:bg-orange-600" : "bg-yellow-500 hover:bg-yellow-600";
+    const accentText = theme === "fast-food" ? "text-orange-500" : "text-yellow-600";
+
+    // Dynamic hover class based on the active theme
+    const cardHoverClass = theme === "fast-food" ? "hover:bg-orange-50 hover:border-orange-400" : "hover:bg-yellow-50 hover:border-yellow-400";
+
+    // Dynamic active cart based on orderType and selectedTable
+    const cart = orderType === 'Dine-In' ? (tableCarts[selectedTable] || []) : quickCart;
+
+    const addToCart = (item) => {
+        if (orderType === 'Dine-In') {
+            const currentCart = tableCarts[selectedTable] || [];
+            const existing = currentCart.find(c => c.id === item.id);
+            const newCart = existing
+                ? currentCart.map(c => c.id === item.id ? { ...c, qty: c.qty + 1 } : c)
+                : [...currentCart, { ...item, qty: 1 }];
+
+            setTableCarts(prev => ({ ...prev, [selectedTable]: newCart }));
+
+            const sub = newCart.reduce((sum, i) => sum + i.price * i.qty, 0);
+            const tot = Math.round(sub * 1.05);
+            setTables(prev => prev.map(t => t.id === selectedTable ? { ...t, status: 'occupied', bill: tot } : t));
+        } else {
+            const existing = quickCart.find(c => c.id === item.id);
+            if (existing) {
+                setQuickCart(quickCart.map(c => c.id === item.id ? { ...c, qty: c.qty + 1 } : c));
+            } else {
+                setQuickCart([...quickCart, { ...item, qty: 1 }]);
+            }
+        }
+    };
+
+    const updateQty = (id, delta) => {
+        if (orderType === 'Dine-In') {
+            const currentCart = tableCarts[selectedTable] || [];
+            const newCart = currentCart.map(c => {
+                if (c.id === id) return { ...c, qty: c.qty + delta };
+                return c;
+            }).filter(c => c.qty > 0);
+
+            setTableCarts(prev => ({ ...prev, [selectedTable]: newCart }));
+
+            const sub = newCart.reduce((sum, i) => sum + i.price * i.qty, 0);
+            const tot = Math.round(sub * 1.05);
+            setTables(prev => prev.map(t => t.id === selectedTable ? {
+                ...t,
+                status: newCart.length > 0 ? 'occupied' : 'empty',
+                bill: newCart.length > 0 ? tot : 0
+            } : t));
+        } else {
+            setQuickCart(quickCart.map(c => {
+                if (c.id === id) return { ...c, qty: c.qty + delta };
+                return c;
+            }).filter(c => c.qty > 0));
+        }
+    };
+
+    const handleTableClick = (tableId) => {
+        setOrderType("Dine-In");
+        setSelectedTable(tableId);
+        setView("menu");
+    };
+
+    const subtotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+    const cgst = subtotal * 0.025;
+    const sgst = subtotal * 0.025;
+    const grandTotal = subtotal + cgst + sgst;
+
+    const handleNewOrder = () => {
+        if (completedTicket) {
+            const targetTable = completedTicket.selectedTable;
+            if (completedTicket.orderType === 'Dine-In') {
+                setTableCarts(prev => ({ ...prev, [targetTable]: [] }));
+                setTables(prev => prev.map(t => t.id === targetTable ? { ...t, status: 'empty', bill: 0 } : t));
+            } else {
+                setQuickCart([]);
+            }
+        }
+        setCompletedTicket(null);
+    };
+
+    const handlePayAndPrint = () => {
+        if (cart.length === 0) {
+            alert("Cart is empty!");
+            return;
+        }
+
+        const orderData = {
+            orderType: orderType || 'Dine-In',
+            order_type: orderType || 'Dine-In',
+            subtotal,
+            tax: cgst + sgst,
+            grandTotal,
+            grand_total: grandTotal,
+            paymentMethod: 'Cash',
+            payment_method: 'Cash',
+            cartItems: cart,
+            items: cart
+        };
+
+        const onTransactionSuccess = (ticketId) => {
+            const ticketObj = {
+                ticketId,
+                orderType: orderType || 'Dine-In',
+                createdAt: new Date().toLocaleString(),
+                cart: [...cart],
+                subtotal,
+                cgst,
+                sgst,
+                grandTotal,
+                selectedTable
+            };
+            setCompletedTicket(ticketObj);
+        };
+
+        const onTransactionFailure = (errorMsg) => {
+            alert(`Error saving transaction: ${errorMsg || 'Database error occurred'}`);
+        };
+
+        if (ipcRenderer) {
+            ipcRenderer.once('save-ticket-response', (event, response) => {
+                if (response && response.success) {
+                    onTransactionSuccess(response.ticketId);
+                } else {
+                    onTransactionFailure(response?.error);
+                }
+            });
+            ipcRenderer.send('save-ticket', orderData);
+        } else if (window.electronAPI?.saveTicket) {
+            const cleanup = window.electronAPI.onSaveTicketResponse((res) => {
+                if (cleanup) cleanup();
+                if (res && res.success) {
+                    onTransactionSuccess(res.ticketId);
+                } else {
+                    onTransactionFailure(res?.error);
+                }
+            });
+            window.electronAPI.saveTicket(orderData);
+        } else {
+            // Web fallback
+            onTransactionSuccess(1);
+        }
+    };
+
+    const filteredItems = activeCategory === "All" ? menuItems : menuItems.filter(i => i.category === activeCategory);
+
+    const emptyCount = tables.filter(t => t.status === 'empty').length;
+    const occupiedCount = tables.filter(t => t.status === 'occupied').length;
+    const reservedCount = tables.filter(t => t.status === 'reserved').length;
+
+    return (
+        <div className="flex h-screen w-full bg-gray-50">
+
+            {/* LEFT COLUMN: 70% */}
+            <div className="w-[70%] h-full flex flex-col border-r border-gray-200 bg-gray-50">
+                {/* Header */}
+                <header className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center shadow-sm z-10">
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-900">Royal Spice</h1>
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className="flex h-2.5 w-2.5 bg-emerald-500 rounded-full"></span>
+                            <span className="text-sm font-medium text-emerald-600">System Online</span>
+                            <span className="text-sm text-gray-400 ml-2">| 12:45 PM</span>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                        <div className="bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 flex items-center gap-2 text-xs font-semibold text-slate-700">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                            <span>👤 {currentUser?.name || 'Staff'} ({currentUser?.role === 'manager' ? 'Manager' : 'Cashier'})</span>
+                        </div>
+                        <div className="bg-gray-100 p-1 rounded-lg flex border border-gray-200">
+                            <button onClick={() => setView("menu")} className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all cursor-pointer ${view === "menu" ? "bg-white shadow-sm text-gray-900" : "text-gray-500"}`}>Menu View</button>
+                            <button onClick={() => setView("tables")} className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all cursor-pointer ${view === "tables" ? "bg-white shadow-sm text-gray-900" : "text-gray-500"}`}>Tables View</button>
+                        </div>
+                        <button
+                            onClick={() => setTheme(theme === "fast-food" ? "fine-dining" : "fast-food")}
+                            className={`px-3 py-1.5 rounded-lg border text-sm font-bold cursor-pointer ${theme === "fast-food" ? "border-orange-200 text-orange-600 bg-orange-50" : "border-yellow-200 text-yellow-700 bg-yellow-50"}`}
+                        >
+                            Theme: {theme === "fast-food" ? "Fast Food" : "Fine Dining"}
+                        </button>
+                        {isManager && (
+                            <>
+                                <button
+                                    onClick={() => onNavigate('inventory')}
+                                    className="px-3 py-1.5 rounded-lg border border-indigo-200 text-sm font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition-colors flex items-center gap-1.5 cursor-pointer"
+                                >
+                                    📦 Inventory
+                                </button>
+                                <button
+                                    onClick={() => onNavigate('dashboard')}
+                                    className="px-3 py-1.5 rounded-lg border border-emerald-200 text-sm font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors flex items-center gap-1.5 cursor-pointer"
+                                >
+                                    📊 Dashboarddd
+                                </button>
+                            </>
+                        )}
+                        <button
+                            onClick={() => onNavigate('lock')}
+                            className="px-3 py-1.5 rounded-lg border border-red-200 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                            🔒 Lock Terminal
+                        </button>
+                    </div>
+                </header>
+
+                {/* Status Bar */}
+                <div className="bg-white px-6 py-2 flex gap-4 text-sm font-medium border-b border-gray-200 shadow-sm">
+                    <span className="text-emerald-600 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> {emptyCount} Empty</span>
+                    <span className="text-amber-600 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500"></span> {occupiedCount} Occupied</span>
+                    <span className="text-blue-600 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500"></span> {reservedCount} Reserved</span>
+                </div>
+
+                {/* Content Area */}
+                <div className="flex-1 overflow-auto p-6">
+                    {view === "menu" ? (
+                        <>
+                            {/* Categories */}
+                            <div className="flex gap-2 overflow-x-auto pb-4 mb-4">
+                                {CATEGORIES.map(cat => (
+                                    <button
+                                        key={cat}
+                                        onClick={() => setActiveCategory(cat)}
+                                        className={`px-5 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-all border ${activeCategory === cat ? `${accentColor} text-white border-transparent shadow-md` : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                                    >
+                                        {cat}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Item Grid */}
+                            <div className="grid grid-cols-3 xl:grid-cols-4 gap-4">
+                                {filteredItems.map(item => (
+                                    <div
+                                        key={item.id}
+                                        onClick={() => addToCart(item)}
+                                        className={`bg-white border border-gray-200 p-4 rounded-xl shadow-sm transition-all duration-200 flex flex-col justify-between cursor-pointer transform hover:-translate-y-1 hover:shadow-md ${cardHoverClass}`}
+                                    >
+                                        <div>
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div className={`w-4 h-4 border flex items-center justify-center p-0.5 ${item.type === 'veg' ? 'border-green-600' : 'border-red-600'}`}>
+                                                    <div className={`w-2 h-2 rounded-full ${item.type === 'veg' ? 'bg-green-600' : 'bg-red-600'}`}></div>
+                                                </div>
+                                            </div>
+                                            <h3 className="font-semibold text-gray-900 leading-tight mb-1">{item.name}</h3>
+                                            <p className="text-gray-500 font-medium">₹{item.price}</p>
+                                        </div>
+                                        <button className="mt-4 w-full py-2 bg-gray-100 text-gray-900 font-semibold rounded-lg text-sm transition-colors pointer-events-none">
+                                            + Add
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </>
+                    ) : (
+                        /* Tables Grid */
+                        <div className="grid grid-cols-3 xl:grid-cols-4 gap-4">
+                            {tables.map(table => (
+                                <div
+                                    key={table.id}
+                                    onClick={() => handleTableClick(table.id)}
+                                    className={`p-4 rounded-xl border shadow-sm flex flex-col justify-between h-32 cursor-pointer transition-all hover:shadow-md hover:-translate-y-1 ${table.status === 'empty' ? 'bg-white border-gray-200 hover:border-emerald-400' :
+                                        table.status === 'occupied' ? 'bg-amber-50 border-amber-200 hover:border-amber-400' :
+                                            'bg-blue-50 border-blue-200 hover:border-blue-400'
+                                        }`}
+                                >
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <h3 className={`text-xl font-bold ${table.status === 'empty' ? 'text-gray-900' : table.status === 'occupied' ? 'text-amber-900' : 'text-blue-900'}`}>T-{table.num}</h3>
+                                            <p className={`text-xs font-medium ${table.status === 'empty' ? 'text-gray-500' : table.status === 'occupied' ? 'text-amber-700' : 'text-blue-700'}`}>{table.cap} Seater</p>
+                                        </div>
+                                        <span className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wider ${table.status === 'empty' ? 'bg-emerald-100 text-emerald-700' :
+                                            table.status === 'occupied' ? 'bg-amber-200 text-amber-800' :
+                                                'bg-blue-200 text-blue-800'
+                                            }`}>
+                                            {table.status}
+                                        </span>
+                                    </div>
+                                    {table.status === 'occupied' && (
+                                        <div className="mt-2 font-bold text-amber-900">Running: ₹{table.bill}</div>
+                                    )}
+                                    {table.status === 'reserved' && (
+                                        <div className="mt-2 font-bold text-blue-900">For {table.time}</div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* RIGHT COLUMN: 30% */}
+            <div className="w-[30%] h-full bg-white flex flex-col shadow-[-4px_0_15px_rgba(0,0,0,0.05)] z-20">
+                {/* Cart Header */}
+                <div className="p-4 border-b border-gray-200">
+                    <div className={`flex bg-gray-100 p-1 rounded-lg ${orderType === 'Dine-In' ? 'mb-4' : ''}`}>
+                        {["Dine-In", "Takeaway", "Delivery"].map(type => (
+                            <button
+                                key={type}
+                                onClick={() => setOrderType(type)}
+                                className={`flex-1 py-1.5 text-sm font-semibold rounded-md transition-all ${orderType === type ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
+                            >
+                                {type}
+                            </button>
+                        ))}
+                    </div>
+                    {orderType === 'Dine-In' && (
+                        <select
+                            value={selectedTable}
+                            onChange={(e) => setSelectedTable(Number(e.target.value))}
+                            className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block p-2.5 font-semibold cursor-pointer"
+                        >
+                            {tables.map(t => (
+                                <option key={t.id} value={t.id}>
+                                    Table {t.num}{t.bill > 0 ? ` (₹${t.bill.toLocaleString()})` : ''}
+                                </option>
+                            ))}
+                        </select>
+                    )}
+                </div>
+
+                {/* Cart Items */}
+                <div className="flex-1 overflow-auto p-4">
+                    {cart.length === 0 ? (
+                        <div className="h-full flex items-center justify-center text-gray-400 font-medium">
+                            Cart is empty
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {cart.map(item => (
+                                <div key={item.id} className="flex justify-between items-center">
+                                    <div className="flex-1">
+                                        <h4 className="text-sm font-bold text-gray-900">{item.name}</h4>
+                                        <p className="text-xs text-gray-500">₹{item.price}</p>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex items-center bg-gray-100 rounded-lg p-0.5 border border-gray-200">
+                                            <button onClick={() => updateQty(item.id, -1)} className="w-7 h-7 flex items-center justify-center bg-white rounded-md shadow-sm text-gray-900 font-bold hover:bg-gray-50 transition-colors">-</button>
+                                            <span className="w-8 text-center text-sm font-bold text-gray-900">{item.qty}</span>
+                                            <button onClick={() => updateQty(item.id, 1)} className="w-7 h-7 flex items-center justify-center bg-white rounded-md shadow-sm text-gray-900 font-bold hover:bg-gray-50 transition-colors">+</button>
+                                        </div>
+                                        <div className="w-16 text-right font-bold text-gray-900">₹{item.price * item.qty}</div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Billing & Action Area */}
+                <div className="bg-gray-50 p-6 border-t border-gray-200">
+                    <div className="space-y-2 mb-4 text-sm">
+                        <div className="flex justify-between text-gray-600">
+                            <span>Subtotal</span>
+                            <span className="font-semibold text-gray-900">₹{subtotal.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-gray-600">
+                            <span>CGST (2.5%)</span>
+                            <span className="font-semibold text-gray-900">₹{cgst.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-gray-600">
+                            <span>SGST (2.5%)</span>
+                            <span className="font-semibold text-gray-900">₹{sgst.toFixed(2)}</span>
+                        </div>
+                        <div className="border-t border-gray-200 pt-2 mt-2 flex justify-between text-xl font-black text-gray-900">
+                            <span>Total</span>
+                            <span className={accentText}>₹{grandTotal.toFixed(2)}</span>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 mb-4">
+                        {["Cash", "UPI", "Card"].map(pay => (
+                            <button key={pay} className="py-2 border border-gray-200 rounded-lg text-sm font-bold text-gray-700 bg-white hover:bg-gray-100 hover:border-gray-300 transition-all">
+                                {pay}
+                            </button>
+                        ))}
+                    </div>
+
+                    <button
+                        onClick={handlePayAndPrint}
+                        className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white text-lg font-black rounded-xl shadow-lg shadow-emerald-500/30 transition-transform active:scale-95"
+                    >
+                        Pay & Print Ticket
+                    </button>
+                </div>
+            </div>
+
+            {/* Thermal Receipt Preview Modal */}
+            {completedTicket && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full border border-gray-200 flex flex-col items-center max-h-[90vh] overflow-y-auto">
+                        <div className="w-full flex justify-between items-center pb-3 border-b border-gray-100 mb-4">
+                            <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
+                                <h3 className="font-bold text-gray-900 text-base">Transaction Recorded</h3>
+                            </div>
+                            <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                                SQLite Saved
+                            </span>
+                        </div>
+
+                        {/* Thermal Receipt Component */}
+                        <div className="bg-gray-100 p-4 rounded-xl border border-gray-200 w-full flex justify-center overflow-x-auto">
+                            <Receipt ticket={completedTicket} />
+                        </div>
+
+                        {/* Thermal Printer Selection & Status */}
+                        {printers.length > 0 && (
+                            <div className="w-full mt-4 flex flex-col gap-1 text-xs">
+                                <label className="font-semibold text-gray-700">Select Thermal Printer:</label>
+                                <select
+                                    value={selectedPrinter}
+                                    onChange={(e) => setSelectedPrinter(e.target.value)}
+                                    className="p-2 border border-gray-300 rounded-lg text-xs bg-gray-50 focus:bg-white text-gray-800"
+                                >
+                                    <option value="">Default Printer (OS System Default)</option>
+                                    {printers.map((p, idx) => (
+                                        <option key={idx} value={p.name}>
+                                            {p.name} {p.isDefault ? '(Default)' : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        {printStatus && (
+                            <div className="mt-3 text-xs font-semibold text-center text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 w-full animate-fade-in">
+                                {printStatus}
+                            </div>
+                        )}
+
+                        {/* Action Buttons */}
+                        <div className="grid grid-cols-2 gap-3 w-full mt-4">
+                            <button
+                                type="button"
+                                onClick={handlePrintReceipt}
+                                className="py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                            >
+                                🖨️ Print Receipt
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleNewOrder}
+                                className="py-3 px-4 bg-gray-900 hover:bg-black text-white font-bold rounded-xl text-sm transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                            >
+                                ➕ New Order
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}

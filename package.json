@@ -1,0 +1,72 @@
+{
+  "name": "dine360",
+  "private": true,
+  "version": "1.0.1",
+  "type": "module",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "dist": "node scripts/generate-release.js",
+    "build:exe": "node scripts/generate-release.js",
+    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "preview": "vite preview",
+    "electron:dev": "concurrently \"npm run dev\" \"electron .\""
+  },
+  "dependencies": {
+    "axios": "^1.19.0",
+    "electron-log": "^5.4.4",
+    "electron-updater": "^6.8.9",
+    "node-cron": "^4.6.0",
+    "node-machine-id": "^1.1.12",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "sqlite3": "^6.0.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "7zip-bin": "^5.2.0",
+    "concurrently": "^10.0.4",
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3",
+    "eslint": "^10.8.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^17.7.0",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.2.0"
+  },
+  "build": {
+    "appId": "com.dine360.pos",
+    "productName": "Dine360 POS",
+    "directories": {
+      "output": "dist_installer"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json",
+      "!**/node_modules/sqlite3/deps/**",
+      "!**/node_modules/sqlite3/build/Release/*.obj",
+      "!**/node_modules/sqlite3/build/Release/*.lib",
+      "!**/node_modules/sqlite3/build/Release/*.exp",
+      "!**/node_modules/sqlite3/build/Release/obj/**"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "sriramkumar41323-lgtm",
+        "repo": "dine360"
+      }
+    ],
+    "win": {
+      "target": [
+        "dir"
+      ]
+    }
+  }
+}
