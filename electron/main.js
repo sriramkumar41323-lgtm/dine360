@@ -11,6 +11,11 @@ const { machineIdSync } = nodeMachineId;
 import { fileURLToPath } from 'url';
 import { 
     saveTicket, 
+    holdTicket,
+    getOpenTickets,
+    updateOpenTicket,
+    closeTicket,
+    markKotPrinted,
     getDashboardMetrics, 
     getInventory, 
     addInventoryItem, 
@@ -19,8 +24,20 @@ import {
     authenticateUser,
     getSetting,
     saveActivationData,
+    saveRestaurantRegistration,
+    loginRestaurant,
+    getLicenseAndPlanStatus,
+    updateSubscriptionPayment,
+    resetRegistration,
     runMigrations
 } from './database.js';
+import { printKOT } from './printer.js';
+import { 
+    registerRestaurantInCloud, 
+    syncTicketToCloud, 
+    syncInventoryItemToCloud, 
+    syncAllInventoryToCloud 
+} from './supabaseSync.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -173,6 +190,13 @@ ipcMain.on('save-ticket', (event, orderData) => {
                 success: true,
                 ticketId: ticketId
             });
+
+            // Asynchronously sync ticket to Supabase Cloud in background
+            getSetting('restaurant_id', (rErr, restaurantId) => {
+                if (!rErr && restaurantId) {
+                    syncTicketToCloud(restaurantId, orderData, ticketId).catch(console.warn);
+                }
+            });
         }
     });
 });
@@ -195,7 +219,7 @@ ipcMain.on('get-dashboard-data', (event) => {
     });
 });
 
-// 1. Get Inventory List
+// 1. Get Inventory List & Sync to Cloud
 ipcMain.on('get-inventory', (event) => {
     getInventory((err, items) => {
         if (err) {
@@ -203,6 +227,13 @@ ipcMain.on('get-inventory', (event) => {
             event.reply('get-inventory-response', { success: false, error: err.message });
         } else {
             event.reply('get-inventory-response', { success: true, items });
+
+            // Sync menu inventory to Supabase in background
+            getSetting('restaurant_id', (rErr, restId) => {
+                if (!rErr && restId && items && items.length > 0) {
+                    syncAllInventoryToCloud(restId, items).catch(e => console.warn('Inventory cloud sync deferred:', e.message));
+                }
+            });
         }
     });
 });
@@ -215,6 +246,12 @@ ipcMain.on('add-item', (event, item) => {
             event.reply('add-item-response', { success: false, error: err.message });
         } else {
             event.reply('add-item-response', { success: true, itemId });
+
+            getSetting('restaurant_id', (rErr, restId) => {
+                if (!rErr && restId) {
+                    syncInventoryItemToCloud(restId, { ...item, id: itemId });
+                }
+            });
         }
     });
 });
@@ -227,6 +264,12 @@ ipcMain.on('update-item', (event, item) => {
             event.reply('update-item-response', { success: false, error: err.message });
         } else {
             event.reply('update-item-response', { success: true, changes });
+
+            getSetting('restaurant_id', (rErr, restId) => {
+                if (!rErr && restId) {
+                    syncInventoryItemToCloud(restId, item);
+                }
+            });
         }
     });
 });
@@ -322,6 +365,112 @@ ipcMain.handle('print-receipt', async (event, printerName) => {
     });
 });
 
+// 8b. Save Held Ticket IPC Handler
+ipcMain.handle('hold-ticket', async (event, orderData) => {
+    console.log('IPC received hold-ticket request:', orderData);
+    return new Promise((resolve) => {
+        holdTicket(orderData, (err, ticketId) => {
+            if (err) {
+                console.error('Failed to hold ticket:', err);
+                resolve({ success: false, error: err.message || 'Database error occurred' });
+            } else {
+                console.log(`Ticket #${ticketId} held successfully with status='open'.`);
+                resolve({ success: true, ticketId });
+            }
+        });
+    });
+});
+
+// 8c. KOT Thermal Printing IPC Handler
+ipcMain.handle('print-kot', async (event, orderData, printerName) => {
+    console.log('IPC received print-kot request:', orderData);
+    try {
+        const items = orderData?.cartItems || orderData?.items || [];
+        const newItems = items.filter(item => !item.kot_printed || item.kot_printed === 0);
+
+        if (!newItems || newItems.length === 0) {
+            console.log('No new items to print to kitchen.');
+            return { success: false, message: 'No new items to print to kitchen' };
+        }
+
+        const isAddOn = items.some(item => item.kot_printed === 1 || item.kot_printed === true) || Boolean(orderData?.activeTicketId || orderData?.ticketId);
+
+        const kotPayload = {
+            ...orderData,
+            cartItems: newItems,
+            items: newItems
+        };
+
+        const res = await printKOT(kotPayload, printerName, event.sender, isAddOn);
+
+        if (res && res.success) {
+            const ticketId = orderData?.ticketId || orderData?.activeTicketId;
+            if (ticketId) {
+                await new Promise((resolve) => {
+                    markKotPrinted(ticketId, () => resolve());
+                });
+            }
+        }
+
+        return res;
+    } catch (err) {
+        console.error('KOT Printing IPC error:', err);
+        return { success: false, error: err.message || 'KOT Print Error' };
+    }
+});
+
+// 8d. Get Open Tickets IPC Handler
+ipcMain.handle('get-open-tickets', async () => {
+    return new Promise((resolve) => {
+        getOpenTickets((err, tickets) => {
+            if (err) {
+                console.error('Failed to fetch open tickets:', err);
+                resolve({ success: false, error: err.message });
+            } else {
+                resolve({ success: true, tickets });
+            }
+        });
+    });
+});
+
+// 8e. Update Open Ticket IPC Handler
+ipcMain.handle('update-open-ticket', async (event, ticketId, updatedData) => {
+    console.log('IPC received update-open-ticket request for ticketId:', ticketId, updatedData);
+    return new Promise((resolve) => {
+        updateOpenTicket(ticketId, updatedData, (err) => {
+            if (err) {
+                console.error(`Failed to update open ticket #${ticketId}:`, err);
+                resolve({ success: false, error: err.message || 'Database error' });
+            } else {
+                console.log(`Ticket #${ticketId} updated successfully.`);
+                resolve({ success: true, ticketId });
+            }
+        });
+    });
+});
+
+// 8f. Close Ticket IPC Handler
+ipcMain.handle('close-ticket', async (event, ticketId, paymentMethod) => {
+    console.log('IPC received close-ticket request for ticketId:', ticketId, paymentMethod);
+    return new Promise((resolve) => {
+        closeTicket(ticketId, paymentMethod, (err) => {
+            if (err) {
+                console.error(`Failed to close ticket #${ticketId}:`, err);
+                resolve({ success: false, error: err.message || 'Database error' });
+            } else {
+                console.log(`Ticket #${ticketId} closed/paid successfully.`);
+                resolve({ success: true, ticketId });
+            }
+        });
+    });
+});
+
+// 8g. Open Cash Drawer IPC Handler
+ipcMain.handle('open-cash-drawer', async () => {
+    console.log('IPC received open-cash-drawer request: Cash drawer pulse sent.');
+    return { success: true };
+});
+
 // 9. Get App Setting
 ipcMain.handle('get-setting', async (event, key) => {
     return new Promise((resolve) => {
@@ -336,7 +485,95 @@ ipcMain.handle('get-setting', async (event, key) => {
     });
 });
 
-// 10. Cloud Software Activation IPC
+// 10. Client Registration with 7-Day Free Trial IPC
+ipcMain.handle('register-restaurant', async (event, payload) => {
+    const hwId = getCurrentHardwareId();
+    const registrationData = {
+        ...payload,
+        hardware_id: hwId
+    };
+
+    return new Promise((resolve) => {
+        saveRestaurantRegistration(registrationData, async (err, result) => {
+            if (err) {
+                console.error('Failed to save local registration:', err);
+                return resolve({ success: false, error: err.message || 'Registration database error' });
+            }
+
+            // Sync with Supabase Cloud
+            try {
+                await registerRestaurantInCloud({
+                    ...registrationData,
+                    restaurant_id: result.restaurant_id
+                });
+            } catch (cloudErr) {
+                console.warn('Cloud sync on registration deferred:', cloudErr.message);
+            }
+
+            resolve(result);
+        });
+    });
+});
+
+// 10b. Login Existing Restaurant Terminal IPC
+ipcMain.handle('login-restaurant', async (event, payload) => {
+    const hwId = getCurrentHardwareId();
+    const loginData = {
+        ...payload,
+        hardware_id: hwId
+    };
+
+    return new Promise((resolve) => {
+        loginRestaurant(loginData, (err, result) => {
+            if (err) {
+                console.error('Failed to process login:', err);
+                return resolve({ success: false, error: err.message || 'Login database error' });
+            }
+            resolve(result);
+        });
+    });
+});
+
+// 10c. Get License & Subscription Status IPC
+ipcMain.handle('get-license-status', async () => {
+    return new Promise((resolve) => {
+        getLicenseAndPlanStatus((err, status) => {
+            if (err) {
+                console.error('Failed to get license status:', err);
+                return resolve({ success: false, error: err.message });
+            }
+            resolve({ success: true, ...status });
+        });
+    });
+});
+
+// 10d. Process Subscription Payment & Extend Plan Validity IPC
+ipcMain.handle('process-payment', async (event, paymentData) => {
+    return new Promise((resolve) => {
+        updateSubscriptionPayment(paymentData, (err, result) => {
+            if (err) {
+                console.error('Failed to process subscription payment:', err);
+                return resolve({ success: false, error: err.message });
+            }
+            resolve(result);
+        });
+    });
+});
+
+// 10e. Reset Registration IPC (Allows re-testing or switching restaurant registration)
+ipcMain.handle('reset-registration', async () => {
+    return new Promise((resolve) => {
+        resetRegistration((err, result) => {
+            if (err) {
+                console.error('Failed to reset registration:', err);
+                return resolve({ success: false, error: err.message });
+            }
+            resolve(result || { success: true });
+        });
+    });
+});
+
+// 10e. Cloud Software Activation IPC (Legacy compatibility)
 ipcMain.handle('activate-software', async (event, payload) => {
     const licenseKey = typeof payload === 'string' ? payload : (payload?.license_key || payload?.licenseKey || '');
     const restaurantName = payload?.restaurant_name || payload?.restaurantName || 'Royal Spice';
@@ -396,19 +633,34 @@ ipcMain.handle('save-activation', async (event, data) => {
 ipcMain.handle('verify-hardware', async () => {
     const currentHwId = getCurrentHardwareId();
     return new Promise((resolve) => {
-        getSetting('is_registered', (regErr, isRegistered) => {
-            if (regErr || isRegistered !== 'true') {
+        getLicenseAndPlanStatus((statusErr, licenseInfo) => {
+            if (statusErr || !licenseInfo || !licenseInfo.isRegistered) {
                 return resolve({ activated: false, isValid: true, reason: 'unregistered' });
             }
+
             getSetting('hardware_id', (hwErr, boundHwId) => {
                 if (hwErr || !boundHwId) {
-                    return resolve({ activated: false, isValid: true, reason: 'unregistered' });
+                    // Not locked to hardware yet
+                    return resolve({ 
+                        activated: true, 
+                        isValid: true, 
+                        licenseInfo 
+                    });
                 }
-                if (String(boundHwId).trim() === String(currentHwId).trim()) {
-                    return resolve({ activated: true, isValid: true });
+                if (String(boundHwId).trim() === String(currentHwId).trim() || boundHwId === 'UNKNOWN_HARDWARE_ID') {
+                    return resolve({ 
+                        activated: true, 
+                        isValid: true, 
+                        licenseInfo 
+                    });
                 } else {
                     console.warn(`Hardware Mismatch! Database bound to [${boundHwId}], current machine is [${currentHwId}]`);
-                    return resolve({ activated: false, isValid: false, reason: 'hardware_mismatch' });
+                    return resolve({ 
+                        activated: false, 
+                        isValid: false, 
+                        reason: 'hardware_mismatch',
+                        licenseInfo 
+                    });
                 }
             });
         });

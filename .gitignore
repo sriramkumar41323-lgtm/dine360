@@ -12,6 +12,8 @@ dist
 dist_installer
 dist-ssr
 *.local
+.env
+.env.*
 data/*.sqlite
 
 # Editor directories and files

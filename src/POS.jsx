@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import Receipt from './Receipt';
+import Cart from './components/Cart';
+import TableGrid from './components/TableGrid';
 
 const CATEGORIES = ["All", "Starters", "Main Course", "Biryanis", "Breads", "Beverages"];
 
@@ -27,7 +29,12 @@ const FALLBACK_MENU = [
 
 const ipcRenderer = typeof window !== 'undefined' && window.require ? window.require('electron').ipcRenderer : null;
 
-export default function POS({ onNavigate, currentUser }) {
+export default function POS({
+    onNavigate,
+    currentUser,
+    activeTicketId: propActiveTicketId,
+    setActiveTicketId: propSetActiveTicketId
+}) {
     const isManager = currentUser?.role === 'manager';
     const [menuItems, setMenuItems] = useState([]);
     const [theme, setTheme] = useState("fast-food");
@@ -36,6 +43,15 @@ export default function POS({ onNavigate, currentUser }) {
     const [tables, setTables] = useState(INITIAL_TABLES);
     const [orderType, setOrderType] = useState("Dine-In");
     const [selectedTable, setSelectedTable] = useState(1);
+    const [internalActiveTicketId, setInternalActiveTicketId] = useState(null);
+
+    const activeTicketId = propActiveTicketId !== undefined && propActiveTicketId !== null ? propActiveTicketId : internalActiveTicketId;
+    const setActiveTicketId = (id) => {
+        if (propSetActiveTicketId) propSetActiveTicketId(id);
+        setInternalActiveTicketId(id);
+    };
+
+    const [refreshGridTrigger, setRefreshGridTrigger] = useState(0);
     const [quickCart, setQuickCart] = useState([]);
     const [tableCarts, setTableCarts] = useState({});
     const [completedTicket, setCompletedTicket] = useState(null);
@@ -141,10 +157,25 @@ export default function POS({ onNavigate, currentUser }) {
     const addToCart = (item) => {
         if (orderType === 'Dine-In') {
             const currentCart = tableCarts[selectedTable] || [];
-            const existing = currentCart.find(c => c.id === item.id);
-            const newCart = existing
-                ? currentCart.map(c => c.id === item.id ? { ...c, qty: c.qty + 1 } : c)
-                : [...currentCart, { ...item, qty: 1 }];
+            const unprintedIndex = currentCart.findIndex(c => c.id === item.id && (!c.kot_printed || c.kot_printed === 0));
+            
+            let newCart;
+            if (unprintedIndex >= 0) {
+                newCart = currentCart.map((c, idx) => 
+                    idx === unprintedIndex ? { ...c, qty: c.qty + 1 } : c
+                );
+            } else {
+                const timestamp = performance.now();
+                newCart = [
+                    ...currentCart,
+                    {
+                        ...item,
+                        qty: 1,
+                        kot_printed: 0,
+                        cartKey: `${item.id}-0-${timestamp}`
+                    }
+                ];
+            }
 
             setTableCarts(prev => ({ ...prev, [selectedTable]: newCart }));
 
@@ -156,18 +187,30 @@ export default function POS({ onNavigate, currentUser }) {
             if (existing) {
                 setQuickCart(quickCart.map(c => c.id === item.id ? { ...c, qty: c.qty + 1 } : c));
             } else {
-                setQuickCart([...quickCart, { ...item, qty: 1 }]);
+                setQuickCart([...quickCart, { ...item, qty: 1, kot_printed: 0 }]);
             }
         }
     };
 
-    const updateQty = (id, delta) => {
+    const updateQty = (targetItemOrId, delta, targetIndex) => {
         if (orderType === 'Dine-In') {
             const currentCart = tableCarts[selectedTable] || [];
-            const newCart = currentCart.map(c => {
-                if (c.id === id) return { ...c, qty: c.qty + delta };
-                return c;
-            }).filter(c => c.qty > 0);
+            let newCart;
+
+            if (typeof targetIndex === 'number') {
+                newCart = currentCart.map((c, idx) => {
+                    if (idx === targetIndex) return { ...c, qty: c.qty + delta };
+                    return c;
+                }).filter(c => c.qty > 0);
+            } else {
+                const targetId = typeof targetItemOrId === 'object' ? targetItemOrId.id : targetItemOrId;
+                newCart = currentCart.map(c => {
+                    if (c === targetItemOrId || c.cartKey === targetItemOrId?.cartKey || c.id === targetId) {
+                        return { ...c, qty: c.qty + delta };
+                    }
+                    return c;
+                }).filter(c => c.qty > 0);
+            }
 
             setTableCarts(prev => ({ ...prev, [selectedTable]: newCart }));
 
@@ -179,17 +222,37 @@ export default function POS({ onNavigate, currentUser }) {
                 bill: newCart.length > 0 ? tot : 0
             } : t));
         } else {
+            const targetId = typeof targetItemOrId === 'object' ? targetItemOrId.id : targetItemOrId;
             setQuickCart(quickCart.map(c => {
-                if (c.id === id) return { ...c, qty: c.qty + delta };
+                if (c.id === targetId) return { ...c, qty: c.qty + delta };
                 return c;
             }).filter(c => c.qty > 0));
         }
     };
 
-    const handleTableClick = (tableId) => {
+    const handleSelectTable = (tableId, openTicketObj) => {
         setOrderType("Dine-In");
         setSelectedTable(tableId);
         setView("menu");
+
+        if (openTicketObj) {
+            setActiveTicketId(openTicketObj.ticket_id);
+            const fetchedItems = (openTicketObj.items || openTicketObj.cartItems || []).map(i => ({
+                ...i,
+                id: i.item_id || i.id,
+                qty: i.qty || i.quantity || 1,
+                kot_printed: i.kot_printed !== undefined && i.kot_printed !== null ? Number(i.kot_printed) : 1
+            }));
+            setTableCarts(prev => ({ ...prev, [tableId]: fetchedItems }));
+            setTables(prev => prev.map(t => t.id === tableId ? { ...t, status: 'occupied', bill: openTicketObj.grand_total } : t));
+        } else {
+            setActiveTicketId(null);
+            setTableCarts(prev => ({ ...prev, [tableId]: [] }));
+        }
+    };
+
+    const handleTableClick = (tableId) => {
+        handleSelectTable(tableId, null);
     };
 
     const subtotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
@@ -208,17 +271,24 @@ export default function POS({ onNavigate, currentUser }) {
             }
         }
         setCompletedTicket(null);
+        setActiveTicketId(null);
+        setRefreshGridTrigger(prev => prev + 1);
     };
 
-    const handlePayAndPrint = () => {
+    const handlePayAndPrint = async () => {
         if (cart.length === 0) {
             alert("Cart is empty!");
             return;
         }
 
+        const currentTableObj = tables.find(t => t.id === selectedTable);
+        const tableNumberStr = currentTableObj ? (currentTableObj.num || String(currentTableObj.id)) : String(selectedTable || '01');
+
         const orderData = {
             orderType: orderType || 'Dine-In',
             order_type: orderType || 'Dine-In',
+            tableNumber: tableNumberStr,
+            table_number: tableNumberStr,
             subtotal,
             tax: cgst + sgst,
             grandTotal,
@@ -226,12 +296,36 @@ export default function POS({ onNavigate, currentUser }) {
             paymentMethod: 'Cash',
             payment_method: 'Cash',
             cartItems: cart,
-            items: cart
+            items: cart,
+            status: 'paid'
         };
 
-        const onTransactionSuccess = (ticketId) => {
+        const triggerCashDrawer = async () => {
+            try {
+                if (ipcRenderer && ipcRenderer.invoke) {
+                    await ipcRenderer.invoke('open-cash-drawer');
+                } else if (window.electronAPI && window.electronAPI.openCashDrawer) {
+                    await window.electronAPI.openCashDrawer();
+                }
+            } catch (err) {
+                console.warn('Cash drawer trigger error:', err);
+            }
+        };
+
+        const onTransactionSuccess = async (ticketId) => {
+            await triggerCashDrawer();
+            await handlePrintReceipt();
+
+            const targetTable = selectedTable;
+            if (orderType === 'Dine-In') {
+                setTableCarts(prev => ({ ...prev, [targetTable]: [] }));
+                setTables(prev => prev.map(t => t.id === targetTable ? { ...t, status: 'empty', bill: 0 } : t));
+            } else {
+                setQuickCart([]);
+            }
+
             const ticketObj = {
-                ticketId,
+                ticketId: activeTicketId || ticketId,
                 orderType: orderType || 'Dine-In',
                 createdAt: new Date().toLocaleString(),
                 cart: [...cart],
@@ -242,13 +336,31 @@ export default function POS({ onNavigate, currentUser }) {
                 selectedTable
             };
             setCompletedTicket(ticketObj);
+            setActiveTicketId(null);
+            setRefreshGridTrigger(prev => prev + 1);
         };
 
         const onTransactionFailure = (errorMsg) => {
             alert(`Error saving transaction: ${errorMsg || 'Database error occurred'}`);
         };
 
-        if (ipcRenderer) {
+        if (activeTicketId) {
+            try {
+                if (ipcRenderer && ipcRenderer.invoke) {
+                    await ipcRenderer.invoke('update-open-ticket', activeTicketId, orderData);
+                    await ipcRenderer.invoke('close-ticket', activeTicketId, 'Cash');
+                } else if (window.electronAPI && window.electronAPI.closeTicket) {
+                    if (window.electronAPI.updateOpenTicket) {
+                        await window.electronAPI.updateOpenTicket(activeTicketId, orderData);
+                    }
+                    await window.electronAPI.closeTicket(activeTicketId, 'Cash');
+                }
+                await onTransactionSuccess(activeTicketId);
+            } catch (err) {
+                console.error('Failed to close open ticket:', err);
+                onTransactionFailure(err.message);
+            }
+        } else if (ipcRenderer) {
             ipcRenderer.once('save-ticket-response', (event, response) => {
                 if (response && response.success) {
                     onTransactionSuccess(response.ticketId);
@@ -269,8 +381,36 @@ export default function POS({ onNavigate, currentUser }) {
             window.electronAPI.saveTicket(orderData);
         } else {
             // Web fallback
-            onTransactionSuccess(1);
+            onTransactionSuccess(Date.now());
         }
+    };
+
+    const handleHoldAndPrintSuccess = (cartData, ticketId, printKotRes) => {
+        const targetTable = selectedTable;
+        if (orderType === 'Dine-In') {
+            const updatedItems = (cartData.cartItems || cartData.items || []).map(i => ({
+                ...i,
+                kot_printed: 1
+            }));
+            setTableCarts(prev => ({ ...prev, [targetTable]: updatedItems }));
+            setTables(prev => prev.map(t => t.id === targetTable ? {
+                ...t,
+                status: 'occupied',
+                bill: Math.round(cartData.grandTotal)
+            } : t));
+        } else {
+            setQuickCart([]);
+        }
+        setActiveTicketId(ticketId);
+        setView("menu");
+        setRefreshGridTrigger(prev => prev + 1);
+
+        if (printKotRes && printKotRes.message === 'No new items to print to kitchen') {
+            setPrintStatus(`Ticket #${ticketId} Saved (No new items to print)`);
+        } else {
+            setPrintStatus(`Ticket #${ticketId} Held & KOT Printed Successfully!`);
+        }
+        setTimeout(() => setPrintStatus(null), 4000);
     };
 
     const filteredItems = activeCategory === "All" ? menuItems : menuItems.filter(i => i.category === activeCategory);
@@ -322,7 +462,7 @@ export default function POS({ onNavigate, currentUser }) {
                                     onClick={() => onNavigate('dashboard')}
                                     className="px-3 py-1.5 rounded-lg border border-emerald-200 text-sm font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors flex items-center gap-1.5 cursor-pointer"
                                 >
-                                    📊 Dashboarddd
+                                    📊 Dashboard
                                 </button>
                             </>
                         )}
@@ -384,137 +524,34 @@ export default function POS({ onNavigate, currentUser }) {
                             </div>
                         </>
                     ) : (
-                        /* Tables Grid */
-                        <div className="grid grid-cols-3 xl:grid-cols-4 gap-4">
-                            {tables.map(table => (
-                                <div
-                                    key={table.id}
-                                    onClick={() => handleTableClick(table.id)}
-                                    className={`p-4 rounded-xl border shadow-sm flex flex-col justify-between h-32 cursor-pointer transition-all hover:shadow-md hover:-translate-y-1 ${table.status === 'empty' ? 'bg-white border-gray-200 hover:border-emerald-400' :
-                                        table.status === 'occupied' ? 'bg-amber-50 border-amber-200 hover:border-amber-400' :
-                                            'bg-blue-50 border-blue-200 hover:border-blue-400'
-                                        }`}
-                                >
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <h3 className={`text-xl font-bold ${table.status === 'empty' ? 'text-gray-900' : table.status === 'occupied' ? 'text-amber-900' : 'text-blue-900'}`}>T-{table.num}</h3>
-                                            <p className={`text-xs font-medium ${table.status === 'empty' ? 'text-gray-500' : table.status === 'occupied' ? 'text-amber-700' : 'text-blue-700'}`}>{table.cap} Seater</p>
-                                        </div>
-                                        <span className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wider ${table.status === 'empty' ? 'bg-emerald-100 text-emerald-700' :
-                                            table.status === 'occupied' ? 'bg-amber-200 text-amber-800' :
-                                                'bg-blue-200 text-blue-800'
-                                            }`}>
-                                            {table.status}
-                                        </span>
-                                    </div>
-                                    {table.status === 'occupied' && (
-                                        <div className="mt-2 font-bold text-amber-900">Running: ₹{table.bill}</div>
-                                    )}
-                                    {table.status === 'reserved' && (
-                                        <div className="mt-2 font-bold text-blue-900">For {table.time}</div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
+                        /* Tables Visual Grid */
+                        <TableGrid
+                            selectedTable={selectedTable}
+                            onSelectTable={handleSelectTable}
+                            activeTicketId={activeTicketId}
+                            refreshTrigger={refreshGridTrigger}
+                            accentColor={accentColor}
+                            cardHoverClass={cardHoverClass}
+                        />
                     )}
                 </div>
             </div>
 
-            {/* RIGHT COLUMN: 30% */}
-            <div className="w-[30%] h-full bg-white flex flex-col shadow-[-4px_0_15px_rgba(0,0,0,0.05)] z-20">
-                {/* Cart Header */}
-                <div className="p-4 border-b border-gray-200">
-                    <div className={`flex bg-gray-100 p-1 rounded-lg ${orderType === 'Dine-In' ? 'mb-4' : ''}`}>
-                        {["Dine-In", "Takeaway", "Delivery"].map(type => (
-                            <button
-                                key={type}
-                                onClick={() => setOrderType(type)}
-                                className={`flex-1 py-1.5 text-sm font-semibold rounded-md transition-all ${orderType === type ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
-                            >
-                                {type}
-                            </button>
-                        ))}
-                    </div>
-                    {orderType === 'Dine-In' && (
-                        <select
-                            value={selectedTable}
-                            onChange={(e) => setSelectedTable(Number(e.target.value))}
-                            className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block p-2.5 font-semibold cursor-pointer"
-                        >
-                            {tables.map(t => (
-                                <option key={t.id} value={t.id}>
-                                    Table {t.num}{t.bill > 0 ? ` (₹${t.bill.toLocaleString()})` : ''}
-                                </option>
-                            ))}
-                        </select>
-                    )}
-                </div>
-
-                {/* Cart Items */}
-                <div className="flex-1 overflow-auto p-4">
-                    {cart.length === 0 ? (
-                        <div className="h-full flex items-center justify-center text-gray-400 font-medium">
-                            Cart is empty
-                        </div>
-                    ) : (
-                        <div className="space-y-4">
-                            {cart.map(item => (
-                                <div key={item.id} className="flex justify-between items-center">
-                                    <div className="flex-1">
-                                        <h4 className="text-sm font-bold text-gray-900">{item.name}</h4>
-                                        <p className="text-xs text-gray-500">₹{item.price}</p>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex items-center bg-gray-100 rounded-lg p-0.5 border border-gray-200">
-                                            <button onClick={() => updateQty(item.id, -1)} className="w-7 h-7 flex items-center justify-center bg-white rounded-md shadow-sm text-gray-900 font-bold hover:bg-gray-50 transition-colors">-</button>
-                                            <span className="w-8 text-center text-sm font-bold text-gray-900">{item.qty}</span>
-                                            <button onClick={() => updateQty(item.id, 1)} className="w-7 h-7 flex items-center justify-center bg-white rounded-md shadow-sm text-gray-900 font-bold hover:bg-gray-50 transition-colors">+</button>
-                                        </div>
-                                        <div className="w-16 text-right font-bold text-gray-900">₹{item.price * item.qty}</div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-                {/* Billing & Action Area */}
-                <div className="bg-gray-50 p-6 border-t border-gray-200">
-                    <div className="space-y-2 mb-4 text-sm">
-                        <div className="flex justify-between text-gray-600">
-                            <span>Subtotal</span>
-                            <span className="font-semibold text-gray-900">₹{subtotal.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between text-gray-600">
-                            <span>CGST (2.5%)</span>
-                            <span className="font-semibold text-gray-900">₹{cgst.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between text-gray-600">
-                            <span>SGST (2.5%)</span>
-                            <span className="font-semibold text-gray-900">₹{sgst.toFixed(2)}</span>
-                        </div>
-                        <div className="border-t border-gray-200 pt-2 mt-2 flex justify-between text-xl font-black text-gray-900">
-                            <span>Total</span>
-                            <span className={accentText}>₹{grandTotal.toFixed(2)}</span>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 mb-4">
-                        {["Cash", "UPI", "Card"].map(pay => (
-                            <button key={pay} className="py-2 border border-gray-200 rounded-lg text-sm font-bold text-gray-700 bg-white hover:bg-gray-100 hover:border-gray-300 transition-all">
-                                {pay}
-                            </button>
-                        ))}
-                    </div>
-
-                    <button
-                        onClick={handlePayAndPrint}
-                        className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white text-lg font-black rounded-xl shadow-lg shadow-emerald-500/30 transition-transform active:scale-95"
-                    >
-                        Pay & Print Ticket
-                    </button>
-                </div>
-            </div>
+            {/* RIGHT COLUMN: Cart Component */}
+            <Cart
+                cart={cart}
+                orderType={orderType}
+                setOrderType={setOrderType}
+                selectedTable={selectedTable}
+                setSelectedTable={setSelectedTable}
+                tables={tables}
+                updateQty={updateQty}
+                accentText={accentText}
+                onPayAndPrint={handlePayAndPrint}
+                onHoldAndPrintSuccess={handleHoldAndPrintSuccess}
+                selectedPrinter={selectedPrinter}
+                activeTicketId={activeTicketId}
+            />
 
             {/* Thermal Receipt Preview Modal */}
             {completedTicket && (

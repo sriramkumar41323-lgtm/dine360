@@ -1,7 +1,9 @@
 {
   "name": "dine360",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.1.0",
+  "description": "Dine360 Point of Sale System",
+  "author": "Dine360",
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
@@ -14,6 +16,7 @@
     "electron:dev": "concurrently \"npm run dev\" \"electron .\""
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.4",
     "axios": "^1.19.0",
     "electron-log": "^5.4.4",
     "electron-updater": "^6.8.9",
@@ -65,8 +68,17 @@
     ],
     "win": {
       "target": [
-        "dir"
-      ]
+        "nsis"
+      ],
+      "artifactName": "Dine360-POS-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Dine360 POS",
+      "differentialPackage": false
     }
   }
 }
