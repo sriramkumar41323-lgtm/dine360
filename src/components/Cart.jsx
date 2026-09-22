@@ -74,8 +74,7 @@ export default function Cart({
                     holdRes = await window.electronAPI.holdTicket(cartData);
                 } else {
                     console.log('Web fallback hold-ticket:', cartData);
-                    const mockId = Math.floor(Math.random() * 100000);
-                    holdRes = { success: true, ticketId: mockId };
+                    holdRes = { success: true, ticketId: null };
                 }
             }
 

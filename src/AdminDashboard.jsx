@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { supabase } from './supabaseClient';
 
 const ipcRenderer = typeof window !== 'undefined' && window.require ? window.require('electron').ipcRenderer : null;
 
@@ -9,6 +10,15 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
     const [filterType, setFilterType] = useState('All');
     const [selectedTicket, setSelectedTicket] = useState(null);
     const [backupStatus, setBackupStatus] = useState(null);
+    const [reservations, setReservations] = useState([]);
+
+    useEffect(() => {
+        async function fetchReservations() {
+            const { data } = await supabase.from('table_reservations').select('*');
+            if (data) setReservations(data);
+        }
+        fetchReservations();
+    }, []);
 
     const handleManualBackup = async () => {
         setBackupStatus('Creating Backup...');
@@ -161,13 +171,13 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                 <div className="flex items-center gap-4">
                     <button
                         onClick={() => onNavigate('pos')}
-                        className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors flex items-center gap-2 font-semibold text-sm"
+                        className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors flex items-center gap-2 font-semibold text-sm cursor-pointer"
                     >
                         ← Back to POS
                     </button>
                     <div>
                         <h1 className="text-2xl font-bold text-gray-900">Admin Sales Dashboard</h1>
-                        <p className="text-xs text-gray-500 font-medium">Real-time revenue metrics & SQLite database audit</p>
+                        <p className="text-xs text-gray-500 font-medium">Real-time revenue metrics & Database audit</p>
                     </div>
                 </div>
 
@@ -212,14 +222,13 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                 <div className="flex-1 flex items-center justify-center p-12">
                     <div className="text-center">
                         <div className="w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                        <p className="text-gray-600 font-medium text-sm">Loading Sales Metrics from SQLite Database...</p>
+                        <p className="text-gray-600 font-medium text-sm">Loading Sales Metrics...</p>
                     </div>
                 </div>
             ) : (
                 <main className="flex-1 p-8 max-w-7xl w-full mx-auto space-y-8">
                     {/* Key Metrics Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        {/* Total Revenue */}
                         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between">
                             <div>
                                 <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Total Revenue</span>
@@ -233,7 +242,6 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                             </div>
                         </div>
 
-                        {/* Total Orders */}
                         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between">
                             <div>
                                 <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Total Orders</span>
@@ -242,12 +250,11 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                                 </div>
                             </div>
                             <div className="mt-4 pt-3 border-t border-gray-100 text-xs text-gray-500 font-medium flex justify-between">
-                                <span>Saved in SQLite</span>
+                                <span>Saved in Database</span>
                                 <span className="text-emerald-600 font-bold">100% Persisted</span>
                             </div>
                         </div>
 
-                        {/* Average Order Value */}
                         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between">
                             <div>
                                 <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Avg Order Value</span>
@@ -260,7 +267,6 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                             </div>
                         </div>
 
-                        {/* Today's Sales */}
                         <div className="bg-emerald-600 text-white p-6 rounded-2xl shadow-sm flex flex-col justify-between">
                             <div>
                                 <span className="text-xs font-bold uppercase tracking-wider text-emerald-200">Today's Revenue</span>
@@ -275,9 +281,45 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                         </div>
                     </div>
 
+                    {/* Active Table Reservations Section */}
+                    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden p-6">
+                        <h3 className="font-bold text-gray-900 text-lg mb-4">Active Table Reservations</h3>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm text-gray-600">
+                                <thead className="bg-gray-100 text-gray-700 uppercase text-xs font-bold tracking-wider">
+                                    <tr>
+                                        <th className="px-6 py-3.5">Customer Name</th>
+                                        <th className="px-6 py-3.5">Phone</th>
+                                        <th className="px-6 py-3.5">Table ID</th>
+                                        <th className="px-6 py-3.5">Date & Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {reservations.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="4" className="text-center py-6 text-gray-400 font-medium">No active reservations found.</td>
+                                        </tr>
+                                    ) : (
+                                        reservations.map(res => (
+                                            <tr key={res.id} className="hover:bg-gray-50">
+                                                <td className="px-6 py-4 font-bold text-gray-900">{res.customer_name}</td>
+                                                <td className="px-6 py-4 font-semibold text-gray-700">{res.phone}</td>
+                                                <td className="px-6 py-4">
+                                                    <span className="px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-bold">
+                                                        Table {res.table_id}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 font-medium text-gray-500">{res.booking_date} ({res.start_time})</td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
                     {/* Middle Charts & Ranking Grid */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        {/* Top Selling Items */}
                         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
                             <div className="px-6 py-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
                                 <h3 className="font-bold text-gray-900 text-base">Top Selling Dishes</h3>
@@ -308,7 +350,6 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                             </div>
                         </div>
 
-                        {/* Category Sales Distribution */}
                         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
                             <div className="px-6 py-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
                                 <h3 className="font-bold text-gray-900 text-base">Sales by Category</h3>
@@ -345,7 +386,7 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                         <div className="px-6 py-5 border-b border-gray-100 bg-gray-50 flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <div>
                                 <h3 className="font-bold text-gray-900 text-lg">Transaction Audit Log</h3>
-                                <p className="text-xs text-gray-500">Full normalized records from `tickets` & `ticket_items` tables</p>
+                                <p className="text-xs text-gray-500">Full normalized records from tickets</p>
                             </div>
 
                             <div className="flex items-center gap-3">
@@ -409,7 +450,7 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                                                 <td className="px-6 py-4 text-right">
                                                     <button
                                                         onClick={() => setSelectedTicket(t)}
-                                                        className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded font-semibold text-xs transition-colors"
+                                                        className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded font-semibold text-xs transition-colors cursor-pointer"
                                                     >
                                                         Details
                                                     </button>
@@ -435,7 +476,7 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                             </div>
                             <button
                                 onClick={() => setSelectedTicket(null)}
-                                className="text-gray-400 hover:text-gray-600 font-bold text-lg px-2"
+                                className="text-gray-400 hover:text-gray-600 font-bold text-lg px-2 cursor-pointer"
                             >
                                 ✕
                             </button>
@@ -468,7 +509,7 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
 
                         <button
                             onClick={() => setSelectedTicket(null)}
-                            className="mt-6 w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-sm transition-colors"
+                            className="mt-6 w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-sm transition-colors cursor-pointer"
                         >
                             Close Details
                         </button>

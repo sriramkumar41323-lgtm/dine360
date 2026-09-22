@@ -175,6 +175,36 @@ DROP POLICY IF EXISTS "Public anonymous access for inventory" ON public.inventor
 DROP POLICY IF EXISTS "Public anonymous access for tickets" ON public.sales_tickets;
 DROP POLICY IF EXISTS "Public anonymous access for ticket_items" ON public.sales_ticket_items;
 
+
+-- 6. RESTAURANT TABLES (For Dynamic Table Management & QR Ordering)
+-- Stores table details, capacity, and current status for each restaurant branch.
+CREATE TABLE IF NOT EXISTS public.restaurant_tables (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), -- QR Code ki ee ID pass chestham
+    restaurant_id VARCHAR(50) NOT NULL REFERENCES public.restaurants(restaurant_id) ON DELETE CASCADE,
+    table_name VARCHAR(100) NOT NULL, -- e.g., 'Table 01', 'Balcony A'
+    seating_capacity INTEGER NOT NULL DEFAULT 4,
+    status VARCHAR(50) DEFAULT 'Empty' CHECK (status IN ('Empty', 'Occupied', 'Reserved')),
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT uq_restaurant_table_name UNIQUE (restaurant_id, table_name) -- Okate restaurant lo same name tho 2 tables undakunda
+);
+
+-- Index for fast lookup by restaurant (Useful for loading tables in POS)
+CREATE INDEX IF NOT EXISTS idx_restaurant_tables_res_id ON public.restaurant_tables(restaurant_id);
+CREATE INDEX IF NOT EXISTS idx_restaurant_tables_status ON public.restaurant_tables(restaurant_id, status);
+
+-- Enable RLS for the new table
+ALTER TABLE public.restaurant_tables ENABLE ROW LEVEL SECURITY;
+
+-- Scoped RLS Policy for POS Terminal & Mobile App Access (matching your existing structure)
+CREATE POLICY "Allow terminal access for restaurant_tables" 
+ON public.restaurant_tables 
+FOR ALL 
+TO anon, authenticated 
+USING (true) 
+WITH CHECK (true);
+
 -- Scoped RLS Policies for POS Terminal API & Mobile App Access
 CREATE POLICY "Allow terminal access for restaurants" 
 ON public.restaurants 

@@ -1,27 +1,35 @@
 import { useState, useEffect, useCallback } from 'react';
+import TableManager from './components/TableManager';
 import SecurityLockdown from './components/SecurityLockdown';
 import UpdateBanner from './components/UpdateBanner';
 import PinPad from './components/PinPad';
 import Registration from './Registration';
 import PaymentScreen from './components/PaymentScreen';
+import CustomerPortal from './components/CustomerPortal';
 import POS from './POS';
 import AdminDashboard from './AdminDashboard';
 import InventoryManager from './InventoryManager';
+import { supabase } from './supabaseClient'; // Added Supabase client for real-time listener sync
 
 const ipcRenderer = typeof window !== 'undefined' && window.require ? window.require('electron').ipcRenderer : null;
 
 export default function App() {
-  const [isHardwareValid, setIsHardwareValid] = useState(null); // null = checking, false = mismatch, true = valid
-  const [isRegistered, setIsRegistered] = useState(null); // null = loading, false = not registered, true = registered
+  const [isHardwareValid, setIsHardwareValid] = useState(null); 
+  const [isRegistered, setIsRegistered] = useState(null); 
   const [licenseInfo, setLicenseInfo] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
-  const [currentScreen, setCurrentScreen] = useState('pos');
+  
+  const [currentScreen, setCurrentScreen] = useState('pos'); 
   const [activeTicketId, setActiveTicketId] = useState(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   // Auto-updater states
-  const [updateStatus, setUpdateStatus] = useState('idle'); // 'idle' | 'available' | 'downloading' | 'ready'
+  const [updateStatus, setUpdateStatus] = useState('idle'); 
   const [downloadPercent, setDownloadPercent] = useState(0);
+
+  // Check if URL has table or restaurant params (Customer QR Scan View)
+  const searchParams = new URLSearchParams(window.location.search);
+  const isCustomerView = searchParams.has('res_id') || searchParams.has('table_id');
 
   const checkLicenseAndSecurity = useCallback(async () => {
     try {
@@ -43,7 +51,7 @@ export default function App() {
           isValid: true,
           licenseInfo: {
             isRegistered: localVal === 'true',
-            restaurantId: localStorage.getItem('dine360_restaurant_id') || 'D360-DEV-1001',
+            restaurantId: localStorage.getItem('dine360_restaurant_id') || 'D360-KAT-8315',
             restaurantName: localStorage.getItem('dine360_restaurant_name') || 'Royal Spice POS',
             ownerName: localStorage.getItem('dine360_owner_name') || 'Owner',
             planStatus: isExp ? 'expired' : 'trial',
@@ -67,7 +75,6 @@ export default function App() {
         setIsHardwareValid(true);
         setIsRegistered(true);
 
-        // Persistent Auto-Login: If auto-login enabled, log into manager/owner automatically!
         if (info.autoLoginEnabled !== false && !info.isExpired) {
           setCurrentUser({
             name: info.ownerName || info.restaurantName || 'Admin',
@@ -97,6 +104,29 @@ export default function App() {
       isMounted = false;
     };
   }, [checkLicenseAndSecurity]);
+
+  // Global Realtime Listener for new customer orders synced via Supabase
+  useEffect(() => {
+    const channel = supabase
+      .channel('global-restaurant-orders-sync')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'restaurant_orders',
+        },
+        (payload) => {
+          console.log('Live new order captured globally!', payload.new);
+          // Triggers update or notification event across active sessions
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // Listen for OTA Auto-Updater IPC events
   useEffect(() => {
@@ -154,7 +184,6 @@ export default function App() {
       return;
     }
 
-    // Role-based navigation guard for cashier
     if (currentUser?.role === 'cashier' && screen !== 'pos') {
       setCurrentScreen('pos');
       return;
@@ -162,6 +191,11 @@ export default function App() {
 
     setCurrentScreen(screen);
   };
+
+  // If URL has table_id or res_id, render Customer Digital Menu & Booking Portal directly
+  if (isCustomerView) {
+    return <CustomerPortal />;
+  }
 
   // 1. Loading state during hardware & activation check
   if (isHardwareValid === null || isRegistered === null) {
@@ -185,7 +219,7 @@ export default function App() {
     );
   }
 
-  // 3. Unregistered device setup screen (7-Day Trial Registration or Existing Cloud Login)
+  // 3. Unregistered device setup screen
   if (isRegistered === false) {
     return (
       <Registration 
@@ -233,6 +267,7 @@ export default function App() {
             <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
             {licenseInfo?.restaurantName || 'Dine360 POS'}
           </span>
+
           {licenseInfo?.restaurantId && (
             <span className="text-[11px] font-mono bg-slate-800 text-amber-400 px-2 py-0.5 rounded border border-slate-700">
               ID: {licenseInfo.restaurantId}
@@ -285,6 +320,12 @@ export default function App() {
         )}
         {activeScreen === 'inventory' && (
           <InventoryManager onNavigate={handleNavigate} currentUser={currentUser} />
+        )}
+        {activeScreen === 'tables' && (
+          <TableManager 
+            restaurantId={licenseInfo?.restaurantId || 'D360-KAT-8315'} 
+            onNavigate={handleNavigate}
+          />
         )}
         {activeScreen === 'registration' && (
           <Registration 

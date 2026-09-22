@@ -2,16 +2,14 @@ import { useState, useEffect } from 'react';
 import Receipt from './Receipt';
 import Cart from './components/Cart';
 import TableGrid from './components/TableGrid';
+import { supabase } from './supabaseClient'; // nee path ki taggattu chusko (e.g., './supabaseClient')
 
 const CATEGORIES = ["All", "Starters", "Main Course", "Biryanis", "Breads", "Beverages"];
 
+// Hardcoded 5 tables badhulu real 2 tables (mee database lo unnatlu)
 const INITIAL_TABLES = [
     { id: 1, num: "01", cap: 4, status: "empty", bill: 0 },
-    { id: 2, num: "02", cap: 2, status: "occupied", bill: 1250 },
-    { id: 3, num: "03", cap: 4, status: "empty", bill: 0 },
-    { id: 4, num: "04", cap: 6, status: "reserved", bill: 0, time: "7:30 PM" },
-    { id: 5, num: "05", cap: 2, status: "occupied", bill: 480 },
-    { id: 6, num: "06", cap: 4, status: "empty", bill: 0 },
+    { id: 2, num: "02", cap: 4, status: "empty", bill: 0 },
 ];
 
 const FALLBACK_MENU = [
@@ -145,6 +143,56 @@ export default function POS({
         };
     }, []);
 
+
+    // Realtime listener for customer portal orders
+    useEffect(() => {
+        const channel = supabase
+            .channel('pos-realtime-orders')
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'restaurant_orders',
+                },
+                (payload) => {
+                    const newOrder = payload.new;
+                    console.log('New Live Order Received from Customer:', newOrder);
+
+                    // Map table_id or table_number to update respective table cart
+                    const targetTableNum = newOrder.table_id || newOrder.table_name || '1';
+                    const matchedTable = tables.find(t => String(t.id) === String(targetTableNum) || t.num === targetTableNum) || tables[0];
+                    const tableId = matchedTable ? matchedTable.id : 1;
+
+                    const formattedItems = (newOrder.items || []).map(i => ({
+                        ...i,
+                        id: i.item_id || i.id,
+                        qty: i.qty || i.quantity || 1,
+                        kot_printed: 1
+                    }));
+
+                    // Automatically update state so it reflects instantly on POS cart & table view
+                    setTableCarts(prev => ({
+                        ...prev,
+                        [tableId]: [...(prev[tableId] || []), ...formattedItems]
+                    }));
+
+                    setTables(prev => prev.map(t => t.id === tableId ? {
+                        ...t,
+                        status: 'occupied',
+                        bill: Math.round(newOrder.total_amount || newOrder.grand_total || 0)
+                    } : t));
+
+                    setRefreshGridTrigger(prev => prev + 1);
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [tables]);
+
     const accentColor = theme === "fast-food" ? "bg-orange-500 hover:bg-orange-600" : "bg-yellow-500 hover:bg-yellow-600";
     const accentText = theme === "fast-food" ? "text-orange-500" : "text-yellow-600";
 
@@ -165,14 +213,13 @@ export default function POS({
                     idx === unprintedIndex ? { ...c, qty: c.qty + 1 } : c
                 );
             } else {
-                const timestamp = performance.now();
                 newCart = [
                     ...currentCart,
                     {
                         ...item,
                         qty: 1,
                         kot_printed: 0,
-                        cartKey: `${item.id}-0-${timestamp}`
+                        cartKey: `${item.id}-0-${currentCart.length}`
                     }
                 ];
             }
@@ -249,10 +296,6 @@ export default function POS({
             setActiveTicketId(null);
             setTableCarts(prev => ({ ...prev, [tableId]: [] }));
         }
-    };
-
-    const handleTableClick = (tableId) => {
-        handleSelectTable(tableId, null);
     };
 
     const subtotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
@@ -442,7 +485,13 @@ export default function POS({
                         </div>
                         <div className="bg-gray-100 p-1 rounded-lg flex border border-gray-200">
                             <button onClick={() => setView("menu")} className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all cursor-pointer ${view === "menu" ? "bg-white shadow-sm text-gray-900" : "text-gray-500"}`}>Menu View</button>
-                            <button onClick={() => setView("tables")} className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all cursor-pointer ${view === "tables" ? "bg-white shadow-sm text-gray-900" : "text-gray-500"}`}>Tables View</button>
+                            <button 
+  type="button"
+  onClick={() => onNavigate('tables')}
+  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+>
+  <span>❖</span> Tables & QR
+</button>
                         </div>
                         <button
                             onClick={() => setTheme(theme === "fast-food" ? "fine-dining" : "fast-food")}
@@ -458,6 +507,8 @@ export default function POS({
                                 >
                                     📦 Inventory
                                 </button>
+                                
+                                
                                 <button
                                     onClick={() => onNavigate('dashboard')}
                                     className="px-3 py-1.5 rounded-lg border border-emerald-200 text-sm font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors flex items-center gap-1.5 cursor-pointer"
