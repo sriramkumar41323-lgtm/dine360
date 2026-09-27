@@ -106,7 +106,7 @@ const TableManager = ({ restaurantId, onNavigate }) => {
               
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-inner mb-4">
                 <QRCodeCanvas 
-                  value={`https://dine360-menu.com/order?res_id=${restaurantId}&table_id=${table.id}`} 
+                  value={`https://royal-spice-website-xi.vercel.app/?table_id=${table.id}&res_id=${restaurantId}`}
                   size={140} 
                   level="H"
                 />
