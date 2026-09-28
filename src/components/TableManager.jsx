@@ -39,6 +39,22 @@ const TableManager = ({ restaurantId, onNavigate }) => {
     }
   };
 
+  // Table delete chese function
+  const handleDeleteTable = async (tableId) => {
+    if (window.confirm("are you sure?")) {
+      const { error } = await supabase
+        .from('restaurant_tables')
+        .delete()
+        .eq('id', tableId);
+
+      if (error) {
+        alert("Error deleting table: " + error.message);
+      } else {
+        fetchTables(); // List ni refresh chesthundi
+      }
+    }
+  };
+
   return (
     <div className="p-6 h-full overflow-y-auto bg-slate-100 text-slate-900 min-h-screen">
       <div className="max-w-6xl mx-auto">
@@ -102,7 +118,16 @@ const TableManager = ({ restaurantId, onNavigate }) => {
             <div key={table.id} className="bg-white border border-slate-200 p-5 rounded-xl shadow-sm flex flex-col items-center hover:shadow-md transition-shadow relative overflow-hidden group">
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 to-amber-500"></div>
               
-              <h3 className="font-bold text-lg mb-4 text-slate-800">{table.table_name}</h3>
+              {/* Delete Table Button */}
+              <button
+                onClick={() => handleDeleteTable(table.id)}
+                className="absolute top-3 right-3 text-slate-400 hover:text-red-600 bg-slate-50 hover:bg-red-50 p-1.5 rounded-full transition-colors cursor-pointer z-10"
+                title="Delete Table"
+              >
+                🗑️
+              </button>
+              
+              <h3 className="font-bold text-lg mb-4 text-slate-800 pr-6">{table.table_name}</h3>
               
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-inner mb-4">
                 <QRCodeCanvas 

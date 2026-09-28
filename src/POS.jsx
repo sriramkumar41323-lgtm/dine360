@@ -2,15 +2,9 @@ import { useState, useEffect } from 'react';
 import Receipt from './Receipt';
 import Cart from './components/Cart';
 import TableGrid from './components/TableGrid';
-import { supabase } from './supabaseClient'; // nee path ki taggattu chusko (e.g., './supabaseClient')
+import { supabase } from './supabaseClient';
 
 const CATEGORIES = ["All", "Starters", "Main Course", "Biryanis", "Breads", "Beverages"];
-
-// Hardcoded 5 tables badhulu real 2 tables (mee database lo unnatlu)
-const INITIAL_TABLES = [
-    { id: 1, num: "01", cap: 4, status: "empty", bill: 0 },
-    { id: 2, num: "02", cap: 4, status: "empty", bill: 0 },
-];
 
 const FALLBACK_MENU = [
     { id: 1, item_id: 1, name: "Paneer Tikka", price: 280, category: "Starters", type: "veg" },
@@ -38,7 +32,13 @@ export default function POS({
     const [theme, setTheme] = useState("fast-food");
     const [view, setView] = useState("menu");
     const [activeCategory, setActiveCategory] = useState("All");
-    const [tables, setTables] = useState(INITIAL_TABLES);
+    
+    // Tables dynamic ga database nunchi load avthayi
+    const [tables, setTables] = useState([
+        { id: 1, num: "01", cap: 4, status: "empty", bill: 0 },
+        { id: 2, num: "02", cap: 4, status: "empty", bill: 0 }
+    ]);
+
     const [orderType, setOrderType] = useState("Dine-In");
     const [selectedTable, setSelectedTable] = useState(1);
     const [internalActiveTicketId, setInternalActiveTicketId] = useState(null);
@@ -56,6 +56,30 @@ export default function POS({
     const [printers, setPrinters] = useState([]);
     const [selectedPrinter, setSelectedPrinter] = useState('');
     const [printStatus, setPrintStatus] = useState(null);
+
+    // Fetch Tables from Supabase Database dynamically
+    // Fetch Tables from Supabase Database dynamically
+useEffect(() => {
+    async function fetchTablesFromDB() {
+        try {
+            const { data, error } = await supabase.from('restaurant_tables').select('*');
+            if (data && data.length > 0) {
+                const formattedTables = data.map((t, index) => ({
+                    id: t.id,
+                    // Ikkada database lo table name unna columns check chesi clean ga print chesthundi
+                    num: t.name || t.table_name || t.num || `Table ${index + 1}`,
+                    cap: t.cap || t.capacity || 4,
+                    status: t.status || 'empty',
+                    bill: t.bill || 0
+                }));
+                setTables(formattedTables);
+            }
+        } catch (err) {
+            console.error('Error fetching tables from DB:', err);
+        }
+    }
+    fetchTablesFromDB();
+}, [refreshGridTrigger]);
 
     useEffect(() => {
         let isMounted = true;
@@ -143,7 +167,6 @@ export default function POS({
         };
     }, []);
 
-
     // Realtime listener for customer portal orders
     useEffect(() => {
         const channel = supabase
@@ -153,25 +176,29 @@ export default function POS({
                 {
                     event: 'INSERT',
                     schema: 'public',
-                    table: 'restaurant_orders',
+                    table: 'orders',
                 },
                 (payload) => {
                     const newOrder = payload.new;
                     console.log('New Live Order Received from Customer:', newOrder);
 
-                    // Map table_id or table_number to update respective table cart
-                    const targetTableNum = newOrder.table_id || newOrder.table_name || '1';
-                    const matchedTable = tables.find(t => String(t.id) === String(targetTableNum) || t.num === targetTableNum) || tables[0];
+                    const targetTableNum = String(newOrder.table_id || newOrder.table_name || '1');
+                    const matchedTable = tables.find(t => String(t.id) === targetTableNum || t.num === targetTableNum) || tables[0];
                     const tableId = matchedTable ? matchedTable.id : 1;
 
-                    const formattedItems = (newOrder.items || []).map(i => ({
-                        ...i,
-                        id: i.item_id || i.id,
-                        qty: i.qty || i.quantity || 1,
+                    let rawItems = newOrder.items;
+                    if (typeof rawItems === 'string') {
+                        try { rawItems = JSON.parse(rawItems); } catch(e) { rawItems = []; }
+                    }
+
+                    const formattedItems = (rawItems || []).map((i, idx) => ({
+                        id: i.item_id || i.id || idx + 1,
+                        name: i.name || 'Item',
+                        price: Number(i.price) || 250,
+                        qty: Number(i.qty || i.quantity || 1),
                         kot_printed: 1
                     }));
 
-                    // Automatically update state so it reflects instantly on POS cart & table view
                     setTableCarts(prev => ({
                         ...prev,
                         [tableId]: [...(prev[tableId] || []), ...formattedItems]
@@ -195,11 +222,7 @@ export default function POS({
 
     const accentColor = theme === "fast-food" ? "bg-orange-500 hover:bg-orange-600" : "bg-yellow-500 hover:bg-yellow-600";
     const accentText = theme === "fast-food" ? "text-orange-500" : "text-yellow-600";
-
-    // Dynamic hover class based on the active theme
     const cardHoverClass = theme === "fast-food" ? "hover:bg-orange-50 hover:border-orange-400" : "hover:bg-yellow-50 hover:border-yellow-400";
-
-    // Dynamic active cart based on orderType and selectedTable
     const cart = orderType === 'Dine-In' ? (tableCarts[selectedTable] || []) : quickCart;
 
     const addToCart = (item) => {
@@ -423,7 +446,6 @@ export default function POS({
             });
             window.electronAPI.saveTicket(orderData);
         } else {
-            // Web fallback
             onTransactionSuccess(Date.now());
         }
     };
@@ -464,7 +486,6 @@ export default function POS({
 
     return (
         <div className="flex h-screen w-full bg-gray-50">
-
             {/* LEFT COLUMN: 70% */}
             <div className="w-[70%] h-full flex flex-col border-r border-gray-200 bg-gray-50">
                 {/* Header */}
@@ -486,12 +507,12 @@ export default function POS({
                         <div className="bg-gray-100 p-1 rounded-lg flex border border-gray-200">
                             <button onClick={() => setView("menu")} className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all cursor-pointer ${view === "menu" ? "bg-white shadow-sm text-gray-900" : "text-gray-500"}`}>Menu View</button>
                             <button 
-  type="button"
-  onClick={() => onNavigate('tables')}
-  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
->
-  <span>❖</span> Tables & QR
-</button>
+                                type="button"
+                                onClick={() => onNavigate('tables')}
+                                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                            >
+                                <span>❖</span> Tables & QR
+                            </button>
                         </div>
                         <button
                             onClick={() => setTheme(theme === "fast-food" ? "fine-dining" : "fast-food")}
@@ -507,8 +528,6 @@ export default function POS({
                                 >
                                     📦 Inventory
                                 </button>
-                                
-                                
                                 <button
                                     onClick={() => onNavigate('dashboard')}
                                     className="px-3 py-1.5 rounded-lg border border-emerald-200 text-sm font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors flex items-center gap-1.5 cursor-pointer"

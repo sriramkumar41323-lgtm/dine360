@@ -1,7 +1,7 @@
 {
   "name": "dine360",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Dine360 Point of Sale System",
   "author": "Dine360",
   "type": "module",
