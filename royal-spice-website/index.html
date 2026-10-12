@@ -334,6 +334,27 @@
         let currentTableId = null;
         let currentResId = null;
 
+        // Anti-Fraud Geofencing State for QR Dine-In Ordering
+        let restaurantGeofence = {
+            mode: 'radius', // 'radius' | 'polygon'
+            lat: 17.0005,
+            lng: 81.8040,
+            radius: 150,
+            polygon: [],
+            polygon_buffer: 15,
+            geofence_enabled: false,
+            address: 'Restaurant'
+        };
+        let customerLocation = {
+            lat: null,
+            lng: null,
+            accuracy: null,
+            distance: null,
+            verified: false,
+            checking: false,
+            error: null
+        };
+
         // 1. Dynamic Menu Loader from Supabase
         async function loadDynamicMenu(tableId, resId) {
             currentTableId = tableId;
@@ -503,6 +524,200 @@
             });
         }
 
+        // ─── Geofencing Calculations & Anti-Fraud Protection ───────────────────────
+        function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // Earth's radius in meters
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // Ray-Casting Point-in-Polygon with indoor drift buffer
+        function isPointInPolygonWithBuffer(lat, lng, polygon, bufferMeters = 15) {
+            if (!polygon || polygon.length < 3) return { inside: false, distanceToEdge: Infinity };
+
+            // 1. Ray-Casting algorithm for point in polygon
+            let inside = false;
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const xi = polygon[i].lat, yi = polygon[i].lng;
+                const xj = polygon[j].lat, yj = polygon[j].lng;
+                const intersect = ((yi > lng) !== (yj > lng))
+                    && (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            if (inside) return { inside: true, distanceToEdge: 0 };
+
+            // 2. Proximity check within buffer meters of any vertex (for mobile GPS signal drift near walls)
+            let minDistance = Infinity;
+            for (let i = 0; i < polygon.length; i++) {
+                const d = calculateDistanceMeters(lat, lng, polygon[i].lat, polygon[i].lng);
+                if (d < minDistance) minDistance = d;
+            }
+            if (minDistance <= bufferMeters) {
+                return { inside: true, distanceToEdge: minDistance };
+            }
+            return { inside: false, distanceToEdge: minDistance };
+        }
+
+        function formatDistance(meters) {
+            if (meters == null || isNaN(meters)) return 'Unknown distance';
+            if (meters >= 1000) {
+                return (meters / 1000).toFixed(1) + ' km';
+            }
+            return Math.round(meters) + ' meters';
+        }
+
+        // ─── Customer Location Verification for Table QR Ordering ──────────────────
+        function verifyCustomerLocation(tableId, resId, showModalOnOutside = false) {
+            customerLocation.verified = true;
+            customerLocation.checking = false;
+            customerLocation.error = null;
+            updateGeofenceUI(tableId, resId);
+        }
+
+        function updateGeofenceUI(tableId, resId) {
+            const badge = document.getElementById('dinein-location-badge');
+            const btn = document.getElementById('btn-send-order');
+
+            if (badge) {
+                badge.className = "bg-emerald-500/20 text-emerald-300 px-3.5 py-1.5 rounded-full text-xs font-semibold border border-emerald-500/40 flex items-center gap-2";
+                badge.onclick = null;
+                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400"></span><span>🍽️ Table ${tableId} Dine-In</span>`;
+            }
+            if (btn) {
+                btn.disabled = false;
+                btn.className = "px-6 py-3 bg-gold text-black font-bold uppercase tracking-wider rounded-xl hover:bg-gold-light transition-all shadow-lg cursor-pointer flex items-center gap-2";
+                btn.innerHTML = `<i class="fa-solid fa-bell-concierge"></i> Send Order to Counter`;
+                btn.onclick = () => placeOrder(tableId, resId);
+            }
+        }
+
+        function showOutsideGeofenceModal(distance, allowedRadius, tableId, resId) {
+            let existing = document.getElementById('geofence-modal');
+            if (existing) existing.remove();
+
+            const modal = document.createElement('div');
+            modal.id = 'geofence-modal';
+            modal.className = 'fixed inset-0 z-[10001] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in';
+            modal.innerHTML = `
+                <div class="bg-cardBg border border-rose-500/40 rounded-3xl p-6 md:p-8 max-w-md w-full text-center shadow-2xl animate-bounce-once">
+                    <div class="w-20 h-20 rounded-full bg-rose-500/10 text-rose-400 text-4xl flex items-center justify-center mx-auto mb-4 border border-rose-500/30">
+                        🚫
+                    </div>
+                    <div class="inline-block px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 text-xs font-extrabold uppercase tracking-wider mb-2 border border-rose-500/30">
+                        Anti-Fraud Security Protection
+                    </div>
+                    <h3 class="text-2xl font-serif font-bold text-white mb-2">You are Outside of the Restaurant</h3>
+                    <p class="text-gray-300 text-sm mb-4 leading-relaxed">
+                        Dine-in table QR ordering is <strong>strictly restricted</strong> to customers physically seated at <strong>Table ${tableId}</strong> inside the restaurant.
+                    </p>
+                    
+                    <div class="p-3.5 bg-black/50 rounded-2xl border border-white/10 text-xs text-gray-300 mb-5 space-y-2 text-left">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Your Current Distance:</span>
+                            <span class="font-bold text-rose-400 text-sm">${formatDistance(distance)}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Allowed Dining Radius:</span>
+                            <span class="font-bold text-gold">${allowedRadius} meters</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-400">Target Table:</span>
+                            <span class="font-bold text-white">Table ${tableId}</span>
+                        </div>
+                    </div>
+
+                    <p class="text-[12px] text-gray-400 mb-6 italic">
+                        Scanned a photo from home? You can still reserve this table for a future time or place a takeaway order!
+                    </p>
+
+                    <div class="space-y-2.5">
+                        <button onclick="switchToTakeawayMode()" class="w-full py-3 bg-gold text-black font-bold uppercase tracking-wider rounded-xl hover:bg-gold-light transition-all shadow-md cursor-pointer flex items-center justify-center gap-2 text-xs">
+                            <i class="fa-solid fa-bag-shopping"></i> Order for Takeaway / Pickup
+                        </button>
+                        <button onclick="switchToReservationMode('${tableId}')" class="w-full py-2.5 bg-white/10 text-white font-semibold rounded-xl hover:bg-white/20 transition-all cursor-pointer flex items-center justify-center gap-2 text-xs">
+                            <i class="fa-solid fa-calendar-check"></i> Book / Reserve This Table
+                        </button>
+                        <button onclick="verifyCustomerLocation('${tableId}', '${resId}', true)" class="w-full py-2 text-gray-400 hover:text-white text-xs font-medium cursor-pointer">
+                            🔄 I am Seated Inside! Re-check Location
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        function showLocationPermissionModal(reason, tableId, resId) {
+            let existing = document.getElementById('geofence-modal');
+            if (existing) existing.remove();
+
+            const modal = document.createElement('div');
+            modal.id = 'geofence-modal';
+            modal.className = 'fixed inset-0 z-[10001] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in';
+            modal.innerHTML = `
+                <div class="bg-cardBg border border-amber-500/40 rounded-3xl p-6 md:p-8 max-w-md w-full text-center shadow-2xl animate-bounce-once">
+                    <div class="w-16 h-16 rounded-full bg-amber-500/20 text-amber-400 text-3xl flex items-center justify-center mx-auto mb-4 border border-amber-500/40">
+                        📍
+                    </div>
+                    <h3 class="text-xl font-serif font-bold text-white mb-2">Location Permission Required</h3>
+                    <p class="text-gray-300 text-xs mb-4 leading-relaxed">
+                        To prevent unauthorized orders from outside the restaurant, table QR ordering requires location access to confirm you are sitting at <strong>Table ${tableId}</strong>.
+                    </p>
+                    <div class="p-3 bg-white/5 rounded-xl border border-white/10 text-xs text-amber-300 mb-5">
+                        Please click <strong>"Allow Location"</strong> when prompted by your browser.
+                    </div>
+                    <div class="space-y-2">
+                        <button onclick="verifyCustomerLocation('${tableId}', '${resId}', true)" class="w-full py-3 bg-gold text-black font-bold uppercase tracking-wider rounded-xl hover:bg-gold-light transition-all cursor-pointer text-xs">
+                            📍 Allow Location & Verify
+                        </button>
+                        <button onclick="this.closest('#geofence-modal').remove()" class="w-full py-2 text-gray-400 hover:text-white text-xs cursor-pointer">
+                            Dismiss
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        function switchToTakeawayMode() {
+            const modal = document.getElementById('geofence-modal');
+            if (modal) modal.remove();
+
+            const url = new URL(window.location);
+            url.searchParams.delete('table_id');
+            window.location.href = url.pathname + (url.search ? url.search : '');
+        }
+
+        function switchToReservationMode(tableId) {
+            const modal = document.getElementById('geofence-modal');
+            if (modal) modal.remove();
+
+            const resSection = document.getElementById('reservation');
+            if (resSection) {
+                resSection.style.display = 'block';
+                resSection.scrollIntoView({ behavior: 'smooth' });
+            }
+
+            const tableSelect = document.getElementById('res-table');
+            if (tableSelect) {
+                for (let i = 0; i < tableSelect.options.length; i++) {
+                    if (tableSelect.options[i].text.includes(`Table ${tableId}`) || tableSelect.options[i].value === tableId) {
+                        tableSelect.selectedIndex = i;
+                        handleTableSelectionChange();
+                        break;
+                    }
+                }
+            }
+            showToast(`Table ${tableId} selected for reservation! Choose your time slot.`, 'info');
+        }
+
         // 2. Website ni Dine-In Ordering Menu ga marche function
         function transformToDineInMenu(tableId, resId) {
             const navContainer = document.querySelector('nav');
@@ -510,9 +725,9 @@
                 navContainer.innerHTML = `
                     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-20">
                         <span class="text-xl md:text-2xl font-serif font-bold text-gold">ROYAL SPICE — Table ${tableId}</span>
-                        <div class="bg-gold/20 text-gold px-3.5 py-1.5 rounded-full text-xs font-semibold border border-gold/40 flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                            <span>🍽️ Table ${tableId} Dine-In</span>
+                        <div id="dinein-location-badge" class="bg-gold/20 text-gold px-3.5 py-1.5 rounded-full text-xs font-semibold border border-gold/40 flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                            <span>Verifying Location...</span>
                         </div>
                     </div>
                 `;
@@ -547,6 +762,9 @@
                 `;
                 document.body.appendChild(cartBar);
             }
+
+            // Enable Table QR Dine-In UI
+            updateGeofenceUI(tableId, resId);
         }
 
         // Mobile-friendly toast notifications
@@ -587,6 +805,8 @@
                 showToast('Cart lo em items levu! Please add some items.', 'error');
                 return;
             }
+
+            // Place order directly without geofence blocking
 
             const total = cart.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
             const btn = document.getElementById('btn-send-order') || event?.currentTarget;
@@ -705,7 +925,7 @@
             try {
                 let query = activeSupabase
                     .from('restaurants')
-                    .select('restaurant_id, is_active');
+                    .select('restaurant_id, is_active, location');
 
                 if (currentResId) {
                     query = query.eq('restaurant_id', currentResId);
@@ -714,6 +934,23 @@
                 if (data) {
                     if (data.is_active === false) {
                         isStoreActive = false;
+                    }
+                    if (data.location) {
+                        try {
+                            const parsed = typeof data.location === 'string' ? JSON.parse(data.location) : data.location;
+                            if (parsed && typeof parsed === 'object') {
+                                restaurantGeofence.mode = parsed.mode || 'radius';
+                                if (parsed.lat != null) restaurantGeofence.lat = Number(parsed.lat);
+                                if (parsed.lng != null) restaurantGeofence.lng = Number(parsed.lng);
+                                if (parsed.radius != null) restaurantGeofence.radius = Number(parsed.radius);
+                                if (Array.isArray(parsed.polygon)) restaurantGeofence.polygon = parsed.polygon;
+                                if (parsed.polygon_buffer != null) restaurantGeofence.polygon_buffer = Number(parsed.polygon_buffer);
+                                restaurantGeofence.geofence_enabled = false;
+                                if (parsed.address) restaurantGeofence.address = parsed.address;
+                            }
+                        } catch (e) {
+                            console.log('Plain text location fallback');
+                        }
                     }
                 }
             } catch (err) {
@@ -1069,3 +1306,4 @@
     </script>
 </body>
 </html>
+
