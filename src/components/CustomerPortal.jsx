@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient';
 
 const CustomerPortal = () => {
   const [searchParams] = useState(new URLSearchParams(window.location.search));
-  const restaurantId = searchParams.get('res_id') || 'D360-KAT-8315';
+  const restaurantId = searchParams.get('res_id') || localStorage.getItem('dine360_restaurant_id') || 'D360-RJY-1997';
   const tableId = searchParams.get('table_id');
 
   const [activeTab, setActiveTab] = useState('menu'); // 'menu' or 'booking'

@@ -15,9 +15,12 @@ export class KOTPrinter {
         this.commands.push({ type: 'header', text: headerText, bold: true });
     }
 
-    setOrderInfo(orderType, tableNumber) {
+    setOrderInfo(orderType, tableNumber, captain = '', station = 'Kitchen', kotNumber = 1) {
         this.orderType = orderType;
         this.tableNumber = tableNumber;
+        this.captain = captain;
+        this.station = station;
+        this.kotNumber = kotNumber;
     }
 
     addItem(name, quantity) {
@@ -29,7 +32,7 @@ export class KOTPrinter {
     }
 
     generateHTML() {
-        const headerTitle = this.headerText || '*** KITCHEN ORDER TICKET (KOT) ***';
+        const headerTitle = this.headerText || `*** ${this.station.toUpperCase()} ORDER TICKET (KOT #${this.kotNumber}) ***`;
         const itemRows = this.items.map(item => `
             <tr style="border-bottom: 1px dashed #ccc;">
                 <td style="padding: 6px 0; font-size: 16px; font-weight: bold;">${item.name}</td>
@@ -54,14 +57,22 @@ export class KOTPrinter {
                     }
                     .header {
                         text-align: center;
-                        font-size: 18px;
+                        font-size: 17px;
                         font-weight: 900;
                         margin-bottom: 10px;
                         border-bottom: 2px solid #000;
                         padding-bottom: 8px;
                     }
-                    .info {
+                    .station-badge {
+                        display: inline-block;
+                        border: 2px solid #000;
+                        padding: 2px 8px;
                         font-size: 14px;
+                        margin-top: 4px;
+                        font-weight: 900;
+                    }
+                    .info {
+                        font-size: 13px;
                         font-weight: bold;
                         margin-bottom: 10px;
                         border-bottom: 1px dashed #000;
@@ -79,7 +90,7 @@ export class KOTPrinter {
                     }
                     th {
                         text-align: left;
-                        font-size: 14px;
+                        font-size: 13px;
                         border-bottom: 1px solid #000;
                         padding-bottom: 4px;
                     }
@@ -93,10 +104,15 @@ export class KOTPrinter {
                 </style>
             </head>
             <body>
-                <div class="header">${headerTitle}</div>
+                <div class="header">
+                    <div>${headerTitle}</div>
+                    <div class="station-badge">ROUTED TO: ${this.station.toUpperCase()} PRINTER</div>
+                </div>
                 <div class="info">
                     <div><span>Order Type:</span> <span>${this.orderType}</span></div>
                     <div><span>Table Number:</span> <span>${this.tableNumber}</span></div>
+                    <div><span>KOT Sequence:</span> <span>KOT #${this.kotNumber}</span></div>
+                    ${this.captain ? `<div><span>Captain / Waiter:</span> <span>${this.captain}</span></div>` : ''}
                     <div><span>Time:</span> <span>${new Date().toLocaleTimeString()}</span></div>
                 </div>
                 <table>
@@ -117,12 +133,12 @@ export class KOTPrinter {
     }
 
     async execute() {
-        console.log('Printing KOT for Table:', this.tableNumber, 'Items count:', this.items.length);
-        
+        console.log(`[ROUTING] Printing ${this.station} Ticket for Table:`, this.tableNumber, 'Items count:', this.items.length);
+
         console.log('=== KOT PRINT OUTPUT START ===');
-        console.log(this.headerText || '*** KITCHEN ORDER TICKET (KOT) ***');
-        console.log(`Order Type: ${this.orderType}`);
-        console.log(`Table Number: ${this.tableNumber}`);
+        console.log(`TARGET STATION: ${this.station.toUpperCase()}`);
+        console.log(this.headerText || `*** ${this.station.toUpperCase()} ORDER TICKET ***`);
+        console.log(`Order Type: ${this.orderType} | Table: ${this.tableNumber} | Captain: ${this.captain || 'None'}`);
         this.items.forEach(i => console.log(` - ${i.name} x${i.quantity}`));
         if (this.isCut) console.log('[CUT COMMAND EXECUTED]');
         console.log('=== KOT PRINT OUTPUT END ===');
@@ -150,15 +166,15 @@ export class KOTPrinter {
 
                 printWin.webContents.print(printOptions, (success, failureReason) => {
                     if (success) {
-                        console.log('KOT printed silently');
+                        console.log(`${this.station} ticket printed silently`);
                         printWin.destroy();
-                        resolve({ success: true, silent: true });
+                        resolve({ success: true, silent: true, station: this.station });
                     } else {
-                        console.warn('Silent KOT print failed/unsupported. Attempting system dialog fallback:', failureReason);
+                        console.warn(`Silent ${this.station} print fallback:`, failureReason);
                         printWin.webContents.print({ silent: false, printBackground: true }, (fallbackSuccess, fallbackReason) => {
                             printWin.destroy();
                             if (fallbackSuccess) {
-                                resolve({ success: true, silent: false });
+                                resolve({ success: true, silent: false, station: this.station });
                             } else {
                                 resolve({ success: false, error: failureReason || fallbackReason || 'KOT Print error' });
                             }
@@ -171,22 +187,64 @@ export class KOTPrinter {
 }
 
 export async function printKOT(orderData, printerName = '', senderWebContents = null, isAddOn = false) {
-    const printer = new KOTPrinter(printerName);
-
-    const headerText = isAddOn ? '*** ADD-ON / RUNNING KOT ***' : '*** KITCHEN ORDER TICKET (KOT) ***';
-    printer.boldHeader(headerText);
-
     const orderType = orderData?.orderType || orderData?.order_type || 'Dine-In';
     const tableNumber = orderData?.tableNumber || orderData?.table_number || orderData?.selectedTable || 'N/A';
-    printer.setOrderInfo(orderType, tableNumber);
+    const captain = orderData?.captain || orderData?.waiter || '';
+    const kotNumber = orderData?.kotNumber || (isAddOn ? 2 : 1);
 
     const items = orderData?.cartItems || orderData?.items || [];
-    items.forEach(item => {
-        const name = item.name || item.item_name || 'Unknown Item';
-        const qty = item.qty || item.quantity || 1;
-        printer.addItem(name, qty);
-    });
+    
+    // Intelligently separate Food items (Kitchen) vs Drink items (Bar)
+    const isDrink = (item) => {
+        const cat = String(item.category || '').toLowerCase();
+        const name = String(item.name || item.item_name || '').toLowerCase();
+        const drinkKeywords = ['beverage', 'drink', 'bar', 'soda', 'lassi', 'juice', 'shake', 'mojito', 'tea', 'coffee', 'water', 'cooler'];
+        return drinkKeywords.some(k => cat.includes(k) || name.includes(k));
+    };
 
-    printer.cut();
-    return await printer.execute(senderWebContents);
+    const foodItems = items.filter(i => !isDrink(i));
+    const barItems = items.filter(i => isDrink(i));
+
+    let kitchenRes = { success: true };
+    let barRes = { success: true };
+
+    // 1. Route Food items to Kitchen Printer
+    if (foodItems.length > 0) {
+        const kitchenPrinter = new KOTPrinter(orderData?.kitchenPrinter || printerName);
+        const kitchenTitle = isAddOn ? `*** ADD-ON KITCHEN TICKET (KOT #${kotNumber}) ***` : `*** KITCHEN ORDER TICKET (KOT #${kotNumber}) ***`;
+        kitchenPrinter.boldHeader(kitchenTitle);
+        kitchenPrinter.setOrderInfo(orderType, tableNumber, captain, 'Kitchen', kotNumber);
+        foodItems.forEach(item => {
+            kitchenPrinter.addItem(item.name || item.item_name || 'Item', item.qty || item.quantity || 1);
+        });
+        kitchenPrinter.cut();
+        kitchenRes = await kitchenPrinter.execute(senderWebContents);
+    }
+
+    // 2. Route Drinks to Bar Printer
+    if (barItems.length > 0) {
+        const barPrinter = new KOTPrinter(orderData?.barPrinter || printerName);
+        const barTitle = isAddOn ? `*** ADD-ON BAR TICKET (BOT #${kotNumber}) ***` : `*** BAR ORDER TICKET (BOT #${kotNumber}) ***`;
+        barPrinter.boldHeader(barTitle);
+        barPrinter.setOrderInfo(orderType, tableNumber, captain, 'Bar', kotNumber);
+        barItems.forEach(item => {
+            barPrinter.addItem(item.name || item.item_name || 'Drink', item.qty || item.quantity || 1);
+        });
+        barPrinter.cut();
+        barRes = await barPrinter.execute(senderWebContents);
+    }
+
+    const bothSuccess = kitchenRes.success && barRes.success;
+    const routedMsg = foodItems.length > 0 && barItems.length > 0
+        ? `KOT Routed: Food sent to Kitchen Printer (${foodItems.length} items), Drinks sent to Bar Printer (${barItems.length} items)`
+        : foodItems.length > 0 
+            ? `KOT sent to Kitchen Printer (${foodItems.length} items)`
+            : `BOT sent to Bar Printer (${barItems.length} items)`;
+
+    return {
+        success: bothSuccess,
+        message: routedMsg,
+        kitchenRes,
+        barRes
+    };
 }

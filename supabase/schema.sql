@@ -234,8 +234,83 @@ TO anon, authenticated
 USING (true) 
 WITH CHECK (true);
 
+-- Scoped RLS Policies for POS Terminal API & Mobile App Access
 CREATE POLICY "Allow terminal access for ticket_items" 
 ON public.sales_ticket_items 
+FOR ALL 
+TO anon, authenticated 
+USING (true) 
+WITH CHECK (true);
+
+-- =========================================================================
+-- 6. RESTAURANT ORDERS TABLE (For QR Code Orders & Customer Web Portal Sync)
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS public.restaurant_orders (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    restaurant_id VARCHAR(50) NOT NULL REFERENCES public.restaurants(restaurant_id) ON DELETE CASCADE,
+    table_id VARCHAR(100),
+    table_name VARCHAR(100),
+    order_type VARCHAR(50) DEFAULT 'Dine-In',
+    items JSONB NOT NULL DEFAULT '[]'::jsonb,
+    total_amount NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    status VARCHAR(50) DEFAULT 'Pending' CHECK (status IN ('Pending', 'Confirmed', 'Preparing', 'Completed', 'Cancelled')),
+    customer_name VARCHAR(255),
+    customer_phone VARCHAR(50),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_restaurant_orders_res_id ON public.restaurant_orders(restaurant_id);
+CREATE INDEX IF NOT EXISTS idx_restaurant_orders_created_at ON public.restaurant_orders(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_restaurant_orders_status ON public.restaurant_orders(status);
+
+ALTER TABLE public.restaurant_orders ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public order creation and terminal access" 
+ON public.restaurant_orders 
+FOR ALL 
+TO anon, authenticated 
+USING (true) 
+WITH CHECK (true);
+
+-- Enable Realtime for restaurant_orders table
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' 
+        AND tablename = 'restaurant_orders'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.restaurant_orders;
+    END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        NULL; -- Ignore if publication already configured
+END $$;
+
+-- =========================================================================
+-- 7. TABLE RESERVATIONS TABLE (For Customer Portal Bookings)
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS public.table_reservations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    restaurant_id VARCHAR(50) NOT NULL REFERENCES public.restaurants(restaurant_id) ON DELETE CASCADE,
+    table_id VARCHAR(100) NOT NULL,
+    customer_name VARCHAR(255) NOT NULL,
+    phone VARCHAR(50) NOT NULL,
+    booking_date DATE NOT NULL,
+    start_time TIME NOT NULL,
+    end_time TIME,
+    guests INTEGER DEFAULT 2,
+    status VARCHAR(50) DEFAULT 'Confirmed' CHECK (status IN ('Pending', 'Confirmed', 'Cancelled', 'Completed')),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_table_reservations_res ON public.table_reservations(restaurant_id, booking_date);
+
+ALTER TABLE public.table_reservations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public bookings and terminal access" 
+ON public.table_reservations 
 FOR ALL 
 TO anon, authenticated 
 USING (true) 
@@ -248,3 +323,4 @@ BEGIN
         REVOKE EXECUTE ON FUNCTION public.rls_auto_enable() FROM PUBLIC, anon;
     END IF;
 END $$;
+

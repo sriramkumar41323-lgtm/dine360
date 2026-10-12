@@ -9,17 +9,17 @@ import log from 'electron-log';
 import nodeMachineId from 'node-machine-id';
 const { machineIdSync } = nodeMachineId;
 import { fileURLToPath } from 'url';
-import { 
-    saveTicket, 
+import {
+    saveTicket,
     holdTicket,
     getOpenTickets,
     updateOpenTicket,
     closeTicket,
     markKotPrinted,
-    getDashboardMetrics, 
-    getInventory, 
-    addInventoryItem, 
-    updateInventoryItem, 
+    getDashboardMetrics,
+    getInventory,
+    addInventoryItem,
+    updateInventoryItem,
     deleteInventoryItem,
     authenticateUser,
     getSetting,
@@ -32,11 +32,11 @@ import {
     runMigrations
 } from './database.js';
 import { printKOT } from './printer.js';
-import { 
-    registerRestaurantInCloud, 
-    syncTicketToCloud, 
-    syncInventoryItemToCloud, 
-    syncAllInventoryToCloud 
+import {
+    registerRestaurantInCloud,
+    syncTicketToCloud,
+    syncInventoryItemToCloud,
+    syncAllInventoryToCloud
 } from './supabaseSync.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -350,9 +350,9 @@ ipcMain.handle('print-receipt', async (event, printerName) => {
                         if (fallbackSuccess) {
                             resolve({ success: true, silent: false });
                         } else {
-                            resolve({ 
-                                success: false, 
-                                error: failureReason || fallbackReason || 'No printer connected or print spooled error' 
+                            resolve({
+                                success: false,
+                                error: failureReason || fallbackReason || 'No printer connected or print spooled error'
                             });
                         }
                     });
@@ -641,25 +641,25 @@ ipcMain.handle('verify-hardware', async () => {
             getSetting('hardware_id', (hwErr, boundHwId) => {
                 if (hwErr || !boundHwId) {
                     // Not locked to hardware yet
-                    return resolve({ 
-                        activated: true, 
-                        isValid: true, 
-                        licenseInfo 
+                    return resolve({
+                        activated: true,
+                        isValid: true,
+                        licenseInfo
                     });
                 }
                 if (String(boundHwId).trim() === String(currentHwId).trim() || boundHwId === 'UNKNOWN_HARDWARE_ID') {
-                    return resolve({ 
-                        activated: true, 
-                        isValid: true, 
-                        licenseInfo 
+                    return resolve({
+                        activated: true,
+                        isValid: true,
+                        licenseInfo
                     });
                 } else {
                     console.warn(`Hardware Mismatch! Database bound to [${boundHwId}], current machine is [${currentHwId}]`);
-                    return resolve({ 
-                        activated: false, 
-                        isValid: false, 
+                    return resolve({
+                        activated: false,
+                        isValid: false,
                         reason: 'hardware_mismatch',
-                        licenseInfo 
+                        licenseInfo
                     });
                 }
             });

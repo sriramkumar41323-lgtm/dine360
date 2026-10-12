@@ -51,7 +51,7 @@ export default function App() {
           isValid: true,
           licenseInfo: {
             isRegistered: localVal === 'true',
-            restaurantId: localStorage.getItem('dine360_restaurant_id') || 'D360-KAT-8315',
+            restaurantId: localStorage.getItem('dine360_restaurant_id') || 'D360-RJY-1997',
             restaurantName: localStorage.getItem('dine360_restaurant_name') || 'Royal Spice POS',
             ownerName: localStorage.getItem('dine360_owner_name') || 'Owner',
             planStatus: isExp ? 'expired' : 'trial',
@@ -323,7 +323,7 @@ export default function App() {
         )}
         {activeScreen === 'tables' && (
           <TableManager 
-            restaurantId={licenseInfo?.restaurantId || 'D360-KAT-8315'} 
+            restaurantId={licenseInfo?.restaurantId || localStorage.getItem('dine360_restaurant_id') || 'D360-RJY-1997'} 
             onNavigate={handleNavigate}
           />
         )}

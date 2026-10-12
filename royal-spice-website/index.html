@@ -1,0 +1,1071 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Royal Spice - Fine Dining & Authentic Indian Cuisine</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        serif: ['Playfair Display', 'serif'],
+                        sans: ['Plus Jakarta Sans', 'sans-serif']
+                    },
+                    colors: {
+                        gold: {
+                            DEFAULT: '#D4AF37',
+                            light: '#F3E5AB',
+                            dark: '#AA8C2C',
+                        },
+                        darkBg: '#121212',
+                        cardBg: '#1A1A1A'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #0f0f0f;
+            color: #e5e5e5;
+        }
+        h1, h2, h3, h4, .font-serif {
+            font-family: 'Playfair Display', serif;
+        }
+    </style>
+</head>
+<body class="bg-darkBg text-gray-200 antialiased selection:bg-gold selection:text-black">
+
+    <nav class="fixed top-0 left-0 w-full z-50 bg-black/80 backdrop-blur-md border-b border-gold/20 transition-all duration-300" id="navbar">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-20">
+                <!-- Brand Logo & Live Status -->
+                <div class="flex items-center space-x-3">
+                    <a href="#home" class="flex items-center space-x-2">
+                        <span class="text-2xl md:text-3xl font-serif font-bold tracking-wider text-gold">ROYAL SPICE</span>
+                        <span class="text-xs uppercase tracking-widest text-gray-400 hidden sm:inline-block">| Fine Dining</span>
+                    </a>
+                    <div id="restaurant-status-badge" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border border-emerald-500/50 bg-emerald-950/40 text-emerald-400">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span>Open Now</span>
+                    </div>
+                </div>
+
+                <!-- Desktop Menu -->
+                <div class="hidden md:flex items-center space-x-8">
+                    <a href="#home" class="text-sm uppercase tracking-wider hover:text-gold transition-colors">Home</a>
+                    <a href="#about" class="text-sm uppercase tracking-wider hover:text-gold transition-colors">About</a>
+                    <a href="#menu" class="text-sm uppercase tracking-wider hover:text-gold transition-colors">Menu</a>
+                    <a href="#reservation" class="text-sm uppercase tracking-wider hover:text-gold transition-colors">Reservation</a>
+                    <a href="#contact" class="text-sm uppercase tracking-wider hover:text-gold transition-colors">Contact</a>
+                </div>
+
+                <!-- Reserve Button -->
+                <div class="hidden md:flex items-center space-x-4">
+                    <a href="#reservation" class="px-6 py-2.5 border border-gold text-gold hover:bg-gold hover:text-black font-medium text-sm tracking-widest uppercase transition-all duration-300 rounded-full">
+                        Book a Table
+                    </a>
+                </div>
+
+                <!-- Mobile Menu Button -->
+                <div class="md:hidden flex items-center space-x-3">
+                    <button id="mobile-menu-btn" class="text-gold focus:outline-none text-2xl">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Dropdown Menu -->
+        <div id="mobile-menu" class="hidden md:hidden bg-black/95 border-b border-gold/20 px-4 pt-2 pb-6 space-y-4">
+            <a href="#home" class="block text-center text-sm uppercase tracking-wider hover:text-gold py-2">Home</a>
+            <a href="#about" class="block text-center text-sm uppercase tracking-wider hover:text-gold py-2">About</a>
+            <a href="#menu" class="block text-center text-sm uppercase tracking-wider hover:text-gold py-2">Menu</a>
+            <a href="#reservation" class="block text-center text-sm uppercase tracking-wider hover:text-gold py-2">Reservation</a>
+            <a href="#contact" class="block text-center text-sm uppercase tracking-wider hover:text-gold py-2">Contact</a>
+            <div class="text-center pt-2">
+                <a href="#reservation" class="inline-block w-full py-3 bg-gold text-black font-semibold text-sm tracking-widest uppercase rounded-full">
+                    Book a Table
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <section id="home" class="relative h-screen flex items-center justify-center overflow-hidden">
+        <div class="absolute inset-0 z-0">
+            <img src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1920&q=80" alt="Royal Spice Ambiance" class="w-full h-full object-cover filter brightness-50 scale-105 animate-pulse duration-[10000ms]">
+            <div class="absolute inset-0 bg-gradient-to-t from-darkBg via-black/40 to-black/60"></div>
+        </div>
+
+        <div class="relative z-10 max-w-4xl mx-auto px-4 text-center mt-12">
+            <span class="inline-block text-gold text-sm md:text-base uppercase tracking-[0.3em] mb-4 font-semibold">
+                Authentic Indian Royal Flavors
+            </span>
+            <h1 class="text-4xl sm:text-6xl md:text-7xl font-serif font-bold text-white mb-6 leading-tight">
+                Welcome to <span class="text-gold italic">Royal Spice</span>
+            </h1>
+            <p class="text-gray-300 text-base sm:text-lg md:text-xl max-w-2xl mx-auto mb-10 font-light leading-relaxed">
+                Experience heritage recipes crafted with aromatic spices, fresh ingredients, and royal hospitality.
+            </p>
+            <div class="flex flex-col sm:flex-row justify-center items-center gap-4">
+                <a href="#reservation" class="w-full sm:w-auto px-8 py-4 bg-gold text-black font-semibold uppercase tracking-wider rounded-full hover:bg-gold-light transition-all duration-300 shadow-lg shadow-gold/20">
+                    Book a Table
+                </a>
+                <a href="#menu" class="w-full sm:w-auto px-8 py-4 border border-white/40 text-white font-semibold uppercase tracking-wider rounded-full hover:border-gold hover:text-gold transition-all duration-300">
+                    Explore Menu
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <section id="about" class="py-24 bg-darkBg relative overflow-hidden">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+                <div class="grid grid-cols-2 gap-4 relative">
+                    <div class="space-y-4">
+                        <img src="https://images.unsplash.com/photo-1550966871-3ed3cdb5ed0c?auto=format&fit=crop&w=600&q=80" alt="Restaurant Interior Ambiance" class="rounded-lg shadow-2xl object-cover h-64 w-full border border-gold/10">
+                        <img src="https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=600&q=80" alt="Fine Dining Setup" class="rounded-lg shadow-2xl object-cover h-80 w-full border border-gold/10">
+                    </div>
+                    <div class="space-y-4 pt-12">
+                        <img src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80" alt="Royal Dining Hall" class="rounded-lg shadow-2xl object-cover h-80 w-full border border-gold/10">
+                        <img src="https://images.unsplash.com/photo-1578474846511-04ba529f0b88?auto=format&fit=crop&w=600&q=80" alt="Bar and Lounge" class="rounded-lg shadow-2xl object-cover h-64 w-full border border-gold/10">
+                    </div>
+                </div>
+
+                <div>
+                    <span class="text-gold uppercase tracking-[0.2em] text-sm font-semibold block mb-3">Our Heritage</span>
+                    <h2 class="text-3xl sm:text-5xl font-serif font-bold text-white mb-6 leading-tight">
+                        Royal Recipes & <span class="text-gold italic">Timeless Tradition</span>
+                    </h2>
+                    <p class="text-gray-300 text-base sm:text-lg mb-6 leading-relaxed font-light">
+                        At Royal Spice, we bring centuries-old culinary traditions from the royal kitchens of India straight to your table. Every dish is a symphony of hand-ground spices, tender meats, fresh farm vegetables, and authentic passion, served in an exquisite, majestic ambiance.
+                    </p>
+                    <div class="grid grid-cols-2 gap-6 my-8 border-y border-white/10 py-6">
+                        <div>
+                            <h3 class="text-3xl sm:text-4xl font-serif font-bold text-gold mb-1">20+</h3>
+                            <p class="text-gray-400 text-sm uppercase tracking-wider">Master Spice Blends</p>
+                        </div>
+                        <div>
+                            <h3 class="text-3xl sm:text-4xl font-serif font-bold text-gold mb-1">100%</h3>
+                            <p class="text-gray-400 text-sm uppercase tracking-wider">Authentic Taste</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div class="h-px bg-gold w-16"></div>
+                        <span class="font-serif italic text-gold text-lg">"Master Chef Raghavan"</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="menu" class="py-24 bg-[#141414] relative">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center max-w-3xl mx-auto mb-16">
+                <span class="text-gold uppercase tracking-[0.2em] text-sm font-semibold block mb-3">Culinary Masterpieces</span>
+                <h2 class="text-3xl sm:text-5xl font-serif font-bold text-white mb-4">Royal Spice Menu</h2>
+                <p class="text-gray-400 text-base sm:text-lg font-light">Explore our handcrafted starters, rich gravies, aromatic biryanis, and refreshing beverages.</p>
+            </div>
+
+            <!-- Category Filter Tabs -->
+            <div class="flex justify-center flex-wrap gap-3 mb-12">
+                <button onclick="filterMenu('all')" class="menu-tab active px-6 py-2.5 rounded-full text-sm uppercase tracking-wider font-semibold transition-all duration-300 bg-gold text-black">All</button>
+                <button onclick="filterMenu('starters')" class="menu-tab px-6 py-2.5 rounded-full text-sm uppercase tracking-wider font-semibold transition-all duration-300 bg-cardBg text-gray-300 hover:border-gold border border-white/10">Starters</button>
+                <button onclick="filterMenu('mains')" class="menu-tab px-6 py-2.5 rounded-full text-sm uppercase tracking-wider font-semibold transition-all duration-300 bg-cardBg text-gray-300 hover:border-gold border border-white/10">Main Course</button>
+                <button onclick="filterMenu('biryanis')" class="menu-tab px-6 py-2.5 rounded-full text-sm uppercase tracking-wider font-semibold transition-all duration-300 bg-cardBg text-gray-300 hover:border-gold border border-white/10">Biryanis</button>
+                <button onclick="filterMenu('breads')" class="menu-tab px-6 py-2.5 rounded-full text-sm uppercase tracking-wider font-semibold transition-all duration-300 bg-cardBg text-gray-300 hover:border-gold border border-white/10">Breads</button>
+                <button onclick="filterMenu('beverages')" class="menu-tab px-6 py-2.5 rounded-full text-sm uppercase tracking-wider font-semibold transition-all duration-300 bg-cardBg text-gray-300 hover:border-gold border border-white/10">Beverages</button>
+            </div>
+
+            <!-- Menu Grid (Dynamically Populated from Supabase) -->
+            <div id="menu-grid" class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div class="col-span-full flex flex-col items-center justify-center py-16 text-gray-400">
+                    <div class="animate-spin text-3xl text-gold mb-3">⏳</div>
+                    <p class="text-sm">Loading authentic royal menu...</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Reservation Section -->
+    <section id="reservation" class="py-24 bg-darkBg relative">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="bg-cardBg border border-gold/20 rounded-2xl p-8 sm:p-12 shadow-2xl relative overflow-hidden">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-gold/5 rounded-full filter blur-2xl"></div>
+
+                <div class="text-center mb-8">
+                    <span class="text-gold uppercase tracking-[0.2em] text-sm font-semibold block mb-2">Table Booking</span>
+                    <h2 class="text-3xl sm:text-4xl font-serif font-bold text-white">Choose Your Table & Reserve</h2>
+                    <p class="text-gray-400 text-xs sm:text-sm mt-2 max-w-lg mx-auto">
+                        Reserve your preferred dining table in advance with custom time ranges. Non-overlapping slots prevent double bookings.
+                    </p>
+                </div>
+
+                <!-- Restaurant Open / Closed Status Notice Banner -->
+                <div id="res-status-banner" class="mb-6 p-4 rounded-xl border text-xs sm:text-sm flex items-center gap-3">
+                    <!-- Populated dynamically via JS -->
+                </div>
+
+                <form id="reservation-form" onsubmit="handleReservation(event)" class="space-y-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Full Name</label>
+                            <input type="text" id="res-name" required class="w-full bg-black border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-gold" placeholder="Enter your full name">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Phone Number</label>
+                            <input type="tel" id="res-phone" required class="w-full bg-black border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-gold" placeholder="e.g. 9876543210">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Booking Date</label>
+                            <input type="date" id="res-date" required onchange="handleDateOrTableChange()" class="w-full bg-black border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-gold">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Select Table & Seating</label>
+                            <select id="res-table" onchange="handleDateOrTableChange()" class="w-full bg-black border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-gold cursor-pointer">
+                                <option value="Table 1">Table 1 (4-Seater • Main Dining)</option>
+                                <option value="Table 2">Table 2 (6-Seater Family • AC Hall)</option>
+                                <option value="Table 3">Table 3 (4-Seater • Main Dining)</option>
+                                <option value="Table 4">Table 4 (4-Seater • Outdoor)</option>
+                            </select>
+                        </div>
+
+                        <!-- Booked Slots & Live Availability Card for Selected Table & Date -->
+                        <div id="booked-slots-card" class="sm:col-span-2 p-4 rounded-xl border border-gold/30 bg-black/60 text-xs">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="font-bold text-gold text-sm flex items-center gap-1.5">
+                                    <span>📅</span> Table Availability on Selected Date
+                                </span>
+                                <span id="booked-slots-count" class="text-[11px] text-gray-400">Loading bookings...</span>
+                            </div>
+                            <div id="booked-slots-list" class="space-y-1.5 text-gray-300">
+                                <!-- Dynamic slot pills -->
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <label class="block text-sm font-medium text-gray-300">From (Start Time)</label>
+                                <span class="text-[10px] text-gray-400">Operating: 11:00 AM - 11:30 PM</span>
+                            </div>
+                            <input type="time" id="res-time" required onchange="handleTimeChange()" class="w-full bg-black border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-gold">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <label class="block text-sm font-medium text-gray-300">To (End Time)</label>
+                                <div class="flex gap-1.5">
+                                    <button type="button" onclick="addDurationToStartTime(60)" class="text-[10px] bg-white/10 hover:bg-gold hover:text-black px-2 py-0.5 rounded text-gray-300 transition-colors cursor-pointer">+1h</button>
+                                    <button type="button" onclick="addDurationToStartTime(75)" class="text-[10px] bg-gold/20 hover:bg-gold hover:text-black text-gold px-2 py-0.5 rounded font-bold transition-colors cursor-pointer">+1h 15m (Rec.)</button>
+                                </div>
+                            </div>
+                            <input type="time" id="res-end-time" required onchange="handleTimeChange()" class="w-full bg-black border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-gold">
+                        </div>
+
+                        <!-- Realtime Conflict Alert Message -->
+                        <div id="slot-conflict-alert" class="sm:col-span-2 hidden p-3.5 rounded-xl border text-xs font-semibold leading-relaxed">
+                            <!-- Injected dynamically -->
+                        </div>
+                    </div>
+
+                    <button id="res-submit-btn" type="submit" class="w-full py-4 bg-gold text-black font-bold uppercase tracking-wider rounded-xl hover:bg-gold-light transition-all shadow-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                        Confirm Reservation
+                    </button>
+                </form>
+
+                <!-- Success Box -->
+                <div id="success-box" class="hidden mt-6 p-4 bg-green-900/40 border border-green-500/50 rounded-lg text-center text-green-200">
+                    <i class="fa-solid fa-circle-check text-green-400 text-xl mr-2"></i>
+                    <span id="success-msg"></span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer id="contact" class="bg-black border-t border-gold/20 pt-16 pb-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-10 mb-12">
+                <div class="space-y-4">
+                    <span class="text-2xl font-serif font-bold tracking-wider text-gold">ROYAL SPICE</span>
+                    <p class="text-gray-400 text-sm leading-relaxed font-light">
+                        The ultimate destination for authentic Indian fine dining, rich gravies, and royal hospitality.
+                    </p>
+                </div>
+                <div>
+                    <h3 class="text-white font-serif font-bold text-lg mb-4">Opening Hours</h3>
+                    <p class="text-gray-400 text-sm">Mon - Sun: 11:30 AM - 11:30 PM</p>
+                </div>
+                <div>
+                    <h3 class="text-white font-serif font-bold text-lg mb-4">Location</h3>
+                    <p class="text-gray-400 text-sm leading-relaxed">Banjara Hills Road No. 2, Hyderabad</p>
+                </div>
+                <div>
+                    <h3 class="text-white font-serif font-bold text-lg mb-4">Contact</h3>
+                    <p class="text-gold text-sm font-semibold">+91 98765 12345</p>
+                </div>
+            </div>
+            <div class="border-t border-white/10 pt-8 text-center text-gray-500 text-xs">
+                &copy; 2026 Royal Spice Fine Dining Restaurant. All rights reserved.
+            </div>
+        </div>
+    </footer>
+
+    <!-- Supabase & Script Integration -->
+    <script>
+        // User's Own Official Supabase Credentials
+        const SUPABASE_URL = 'https://gdeqycudvaooypkoiqkj.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkZXF5Y3VkdmFvb3lwa29pcWtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgwOTM0MzUsImV4cCI6MjEwMzY2OTQzNX0.foEik180bUqWRtVAALsKukt_gE7HeCdWk1A3DOwV0u4';
+
+        // Safe global client initialization
+        const activeSupabase = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let activeMenuItems = [];
+        let currentTableId = null;
+        let currentResId = null;
+
+        // 1. Dynamic Menu Loader from Supabase
+        async function loadDynamicMenu(tableId, resId) {
+            currentTableId = tableId;
+            currentResId = resId;
+            const menuGrid = document.getElementById('menu-grid');
+            if (!menuGrid) return;
+
+            try {
+                const { data, error } = await activeSupabase
+                    .from('inventory')
+                    .select('*')
+                    .eq('is_active', true)
+                    .order('name', { ascending: true });
+
+                if (!error && data) {
+                    activeMenuItems = data;
+                    renderMenuCards(activeMenuItems, tableId);
+                    return;
+                }
+            } catch (err) {
+                console.warn('Error loading inventory from Supabase:', err);
+            }
+
+            renderMenuCards([], tableId);
+        }
+
+        function renderMenuCards(items, tableId) {
+            const menuGrid = document.getElementById('menu-grid');
+            if (!menuGrid) return;
+
+            if (!items || items.length === 0) {
+                menuGrid.innerHTML = `
+                    <div class="col-span-full text-center py-16 text-gray-400 bg-cardBg/40 border border-white/5 rounded-2xl">
+                        <div class="text-4xl mb-3">🍽️</div>
+                        <h4 class="text-2xl font-serif text-white mb-2">Our Menu is Being Updated</h4>
+                        <p class="text-sm">Please check back in a few moments or ask our dining staff.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            menuGrid.innerHTML = items.map(item => {
+                const catLower = (item.category || 'general').toLowerCase();
+                let catClass = 'starters';
+                if (catLower.includes('main') || catLower.includes('curry')) catClass = 'mains';
+                else if (catLower.includes('biryani') || catLower.includes('rice')) catClass = 'biryanis';
+                else if (catLower.includes('bread') || catLower.includes('roti') || catLower.includes('naan')) catClass = 'breads';
+                else if (catLower.includes('beverage') || catLower.includes('drink') || catLower.includes('soda')) catClass = 'beverages';
+
+                const isVeg = item.type === 'veg';
+                const price = Number(item.price) || 0;
+
+                return `
+                    <div class="menu-item ${catClass} flex items-center justify-between p-6 bg-cardBg rounded-xl border border-white/5 hover:border-gold/50 transition-all duration-300 group">
+                        <div class="flex items-center space-x-4">
+                            <div class="w-16 h-16 rounded-xl bg-black/60 border border-gold/20 flex items-center justify-center text-2xl group-hover:scale-105 transition-transform shrink-0">
+                                ${isVeg ? '🌱' : '🍗'}
+                            </div>
+                            <div>
+                                <div class="flex items-center gap-2">
+                                    <span class="w-2.5 h-2.5 rounded-full ${isVeg ? 'bg-emerald-400' : 'bg-red-500'}"></span>
+                                    <h3 class="text-xl font-serif font-bold text-white group-hover:text-gold transition-colors">${item.name}</h3>
+                                </div>
+                                <span class="text-[11px] uppercase tracking-wider text-gray-400 mt-1 inline-block">${item.category || 'Special'}</span>
+                                <div class="text-gold font-bold text-base mt-1">₹${price.toFixed(2)}</div>
+                            </div>
+                        </div>
+                        ${tableId ? `
+                            <button onclick="addToCart('${item.name.replace(/'/g, "\\'")}', ${price}, '${tableId}')" class="px-4 py-2.5 bg-gold text-black font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-gold-light transition-all shadow-md cursor-pointer flex items-center gap-1.5 shrink-0">
+                                <i class="fa-solid fa-cart-plus"></i> Add
+                            </button>
+                        ` : `
+                            <span class="text-gold font-serif font-bold text-lg">₹${price.toFixed(2)}</span>
+                        `}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Page load initialization
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const tableId = urlParams.get('table_id');
+            const resId = urlParams.get('res_id');
+
+            loadDynamicMenu(tableId, resId);
+
+            if (tableId) {
+                transformToDineInMenu(tableId, resId);
+            }
+
+            // Realtime listener on inventory table
+            activeSupabase
+                .channel('website-inventory-realtime')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => {
+                    console.log('🔄 Menu update from Supabase!');
+                    loadDynamicMenu(currentTableId, currentResId);
+                })
+                .subscribe();
+
+            // Initialize Reservation Form Defaults
+            const resDate = document.getElementById('res-date');
+            const resTime = document.getElementById('res-time');
+            const resEndTime = document.getElementById('res-end-time');
+
+            const now = new Date();
+            // IST YYYY-MM-DD
+            const istDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now);
+            if (resDate) {
+                resDate.min = istDateStr;
+                resDate.value = istDateStr;
+            }
+            if (resTime) {
+                resTime.value = "12:00";
+            }
+            if (resEndTime) {
+                resEndTime.value = "13:15";
+            }
+
+            checkRestaurantOpenStatus();
+            loadTablesIntoSelect().then(() => {
+                if (resDate && resDate.value) {
+                    fetchDateReservations(resDate.value);
+                }
+            });
+
+            // Realtime listener on table_reservations table
+            activeSupabase
+                .channel('website-reservations-realtime')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'table_reservations' }, () => {
+                    console.log('🔄 Reservation update from Supabase!');
+                    const dateInput = document.getElementById('res-date');
+                    if (dateInput && dateInput.value) {
+                        fetchDateReservations(dateInput.value);
+                    }
+                })
+                .subscribe();
+
+            // Realtime listener on restaurants table for Open/Closed status
+            activeSupabase
+                .channel('website-restaurants-realtime')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'restaurants' }, () => {
+                    console.log('🔄 Restaurant status update from Supabase!');
+                    checkRestaurantOpenStatus();
+                })
+                .subscribe();
+        });
+
+        // Category Filter
+        function filterMenu(category) {
+            const items = document.querySelectorAll('.menu-item');
+            const tabs = document.querySelectorAll('.menu-tab');
+            
+            tabs.forEach(tab => {
+                tab.classList.remove('bg-gold', 'text-black');
+                tab.classList.add('bg-cardBg', 'text-gray-300');
+            });
+            event?.target?.classList.remove('bg-cardBg', 'text-gray-300');
+            event?.target?.classList.add('bg-gold', 'text-black');
+
+            items.forEach(item => {
+                if (category === 'all' || item.classList.contains(category)) {
+                    item.style.display = 'flex';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
+        // 2. Website ni Dine-In Ordering Menu ga marche function
+        function transformToDineInMenu(tableId, resId) {
+            const navContainer = document.querySelector('nav');
+            if (navContainer) {
+                navContainer.innerHTML = `
+                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-20">
+                        <span class="text-xl md:text-2xl font-serif font-bold text-gold">ROYAL SPICE — Table ${tableId}</span>
+                        <div class="bg-gold/20 text-gold px-3.5 py-1.5 rounded-full text-xs font-semibold border border-gold/40 flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                            <span>🍽️ Table ${tableId} Dine-In</span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            const heroSection = document.getElementById('home');
+            const aboutSection = document.getElementById('about');
+            const reservationSection = document.getElementById('reservation');
+
+            if (heroSection) heroSection.style.display = 'none';
+            if (aboutSection) aboutSection.style.display = 'none';
+            if (reservationSection) reservationSection.style.display = 'none';
+
+            // Add bottom live cart bar
+            if (!document.getElementById('live-cart-bar')) {
+                const cartBar = document.createElement('div');
+                cartBar.id = "live-cart-bar";
+                cartBar.className = "fixed bottom-0 left-0 w-full bg-black/95 border-t border-gold/40 p-4 z-50 flex items-center justify-between max-w-4xl mx-auto rounded-t-2xl shadow-2xl backdrop-blur-md";
+                cartBar.style.left = "50%";
+                cartBar.style.transform = "translateX(-50%)";
+                cartBar.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <i class="fa-solid fa-basket-shopping text-gold text-2xl"></i>
+                        <div>
+                            <p class="text-white text-sm font-semibold">Table ${tableId} Order</p>
+                            <p class="text-gray-400 text-xs" id="cart-item-count">0 items selected</p>
+                        </div>
+                    </div>
+                    <button id="btn-send-order" onclick="placeOrder('${tableId}', '${resId}')" class="px-6 py-3 bg-gold text-black font-bold uppercase tracking-wider rounded-xl hover:bg-gold-light transition-all shadow-lg cursor-pointer flex items-center gap-2">
+                        <i class="fa-solid fa-bell-concierge"></i> Send Order to Counter
+                    </button>
+                `;
+                document.body.appendChild(cartBar);
+            }
+        }
+
+        // Mobile-friendly toast notifications
+        function showToast(message, type = 'info') {
+            let toast = document.getElementById('mobile-toast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'mobile-toast';
+                toast.className = 'fixed top-5 left-1/2 -translate-x-1/2 z-[9999] px-5 py-3 rounded-full text-sm font-semibold shadow-2xl transition-all duration-300 pointer-events-none transform -translate-y-10 opacity-0 flex items-center gap-2';
+                document.body.appendChild(toast);
+            }
+            toast.className = `fixed top-5 left-1/2 -translate-x-1/2 z-[9999] px-5 py-3 rounded-full text-sm font-semibold shadow-2xl transition-all duration-300 pointer-events-none flex items-center gap-2 ${
+                type === 'success' ? 'bg-emerald-600 text-white' : type === 'error' ? 'bg-rose-600 text-white' : 'bg-gold text-black'
+            }`;
+            toast.innerHTML = (type === 'success' ? '✓ ' : type === 'error' ? '✕ ' : '🛒 ') + message;
+            toast.style.transform = 'translate(-50%, 0)';
+            toast.style.opacity = '1';
+            clearTimeout(window.__toastTimer);
+            window.__toastTimer = setTimeout(() => {
+                toast.style.transform = 'translate(-50%, -20px)';
+                toast.style.opacity = '0';
+            }, 2500);
+        }
+
+        let cart = [];
+        function addToCart(name, price, tableId) {
+            cart.push({ name, price: Number(price) || 250 });
+            const counter = document.getElementById('cart-item-count');
+            if (counter) {
+                counter.innerText = `${cart.length} items in cart`;
+            }
+            showToast(`${name} added to cart!`, 'info');
+        }
+
+        // 3. Place Order to Cashier (Directly into restaurant_orders table with Pending status)
+        async function placeOrder(tableId, resId) {
+            if (cart.length === 0) {
+                showToast('Cart lo em items levu! Please add some items.', 'error');
+                return;
+            }
+
+            const total = cart.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+            const btn = document.getElementById('btn-send-order') || event?.currentTarget;
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = 'Sending Order to Counter...';
+            }
+
+            const targetRes = resId || currentResId || 'D360-RJY-1997';
+
+            const { error } = await activeSupabase.from('restaurant_orders').insert([{
+                restaurant_id: targetRes,
+                table_id: tableId,
+                table_name: `Table ${tableId}`,
+                order_type: 'Dine-In',
+                items: cart.map(i => ({ name: i.name, price: Number(i.price) || 250, qty: Number(i.qty) || 1, kot_printed: 0 })),
+                total_amount: total,
+                status: 'Pending'
+            }]);
+
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-bell-concierge"></i> Send Order to Counter';
+            }
+
+            if (error) {
+                showToast('Order placement failed: ' + error.message, 'error');
+            } else {
+                showToast('🎉 Order Sent to Cashier!', 'success');
+                cart = [];
+                const counter = document.getElementById('cart-item-count');
+                if (counter) {
+                    counter.innerText = `0 items selected`;
+                }
+
+                // Show friendly success confirmation overlay
+                const modal = document.createElement('div');
+                modal.className = 'fixed inset-0 z-[10000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4';
+                modal.innerHTML = `
+                    <div class="bg-cardBg border border-gold/40 rounded-3xl p-6 max-w-sm w-full text-center shadow-2xl animate-bounce-once">
+                        <div class="w-16 h-16 rounded-full bg-amber-500/20 text-amber-400 text-3xl flex items-center justify-center mx-auto mb-4 border border-amber-500/40">
+                            📝
+                        </div>
+                        <h3 class="text-2xl font-serif font-bold text-gold mb-2">Order Received at Counter!</h3>
+                        <p class="text-gray-300 text-sm mb-4 leading-relaxed">
+                            Your order has been sent to the cashier for verification. Once approved, it will be sent to the kitchen!
+                        </p>
+                        <div class="p-3 bg-white/5 rounded-xl border border-white/10 text-xs text-amber-300 mb-5 flex items-center justify-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                            <span>Awaiting Cashier KOT Approval</span>
+                        </div>
+                        <button onclick="this.closest('.fixed').remove()" class="w-full py-3 bg-gold text-black font-bold uppercase tracking-wider rounded-xl hover:bg-gold-light transition-all cursor-pointer">
+                            Order More Items
+                        </button>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+            }
+        }
+
+        // 4. Utility Functions for Time & Interval Checks
+        function formatTime12(timeStr) {
+            if (!timeStr) return '';
+            const [hStr, mStr] = timeStr.split(':');
+            let h = parseInt(hStr, 10);
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            h = h % 12;
+            if (h === 0) h = 12;
+            return `${String(h).padStart(2, '0')}:${mStr ? mStr.slice(0, 2) : '00'} ${ampm}`;
+        }
+
+        function addMinutesToTime(timeStr, minsToAdd) {
+            if (!timeStr) return '';
+            const [hStr, mStr] = timeStr.split(':');
+            let totalMins = parseInt(hStr, 10) * 60 + parseInt(mStr, 10) + minsToAdd;
+            const newH = Math.floor(totalMins / 60) % 24;
+            const newM = totalMins % 60;
+            return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+        }
+
+        // Mathematical interval overlap check: startA < endB && endA > startB
+        function isTimeOverlapping(startA, endA, startB, endB) {
+            const sA = (startA || '').slice(0, 5);
+            const eA = (endA || addMinutesToTime(sA, 75)).slice(0, 5);
+            const sB = (startB || '').slice(0, 5);
+            const eB = (endB || addMinutesToTime(sB, 75)).slice(0, 5);
+            return sA < eB && eA > sB;
+        }
+
+        window.addDurationToStartTime = function(mins) {
+            const startInput = document.getElementById('res-time');
+            const endInput = document.getElementById('res-end-time');
+            if (!startInput || !endInput) return;
+            if (!startInput.value) {
+                startInput.value = '12:00';
+            }
+            endInput.value = addMinutesToTime(startInput.value, mins);
+            handleTimeChange();
+        };
+
+        // 5. Open / Closed Status Checker
+        async function checkRestaurantOpenStatus() {
+            const statusBadge = document.getElementById('restaurant-status-badge');
+            const statusBanner = document.getElementById('res-status-banner');
+
+            // Current IST Time calculation
+            const now = new Date();
+            const istTimeStr = now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
+            const [currHour, currMin] = istTimeStr.split(':').map(Number);
+            const currTotalMins = currHour * 60 + currMin;
+
+            // Operational Hours: 11:00 AM (660m) - 11:30 PM (1410m)
+            const isOpenHours = currTotalMins >= 660 && currTotalMins <= 1410;
+
+            let isStoreActive = true;
+            try {
+                let query = activeSupabase
+                    .from('restaurants')
+                    .select('restaurant_id, is_active');
+
+                if (currentResId) {
+                    query = query.eq('restaurant_id', currentResId);
+                }
+                const { data } = await query.limit(1).maybeSingle();
+                if (data) {
+                    if (data.is_active === false) {
+                        isStoreActive = false;
+                    }
+                }
+            } catch (err) {
+                console.warn('Restaurant status check fallback:', err);
+            }
+
+            const isOpen = isOpenHours && isStoreActive;
+
+            if (statusBadge) {
+                if (isOpen) {
+                    statusBadge.className = 'hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border border-emerald-500/50 bg-emerald-950/40 text-emerald-400';
+                    statusBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>🟢 Open Now (11:00 AM - 11:30 PM)</span>`;
+                } else {
+                    statusBadge.className = 'hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border border-rose-500/50 bg-rose-950/40 text-rose-400';
+                    statusBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-500"></span><span>🔴 Currently Closed (Opens 11:00 AM)</span>`;
+                }
+            }
+
+            if (statusBanner) {
+                if (isOpen) {
+                    statusBanner.className = 'mb-6 p-4 rounded-xl border border-emerald-500/40 bg-emerald-950/20 text-emerald-300 text-xs sm:text-sm flex items-center gap-3';
+                    statusBanner.innerHTML = `
+                        <span class="text-xl">🟢</span>
+                        <div>
+                            <strong class="font-bold text-white block">Royal Spice is Open Now!</strong>
+                            <span>Dine-in service is live (11:00 AM – 11:30 PM). Book your table in advance below with guaranteed time slots.</span>
+                        </div>
+                    `;
+                } else {
+                    statusBanner.className = 'mb-6 p-4 rounded-xl border border-amber-500/40 bg-amber-950/30 text-amber-200 text-xs sm:text-sm flex items-center gap-3';
+                    statusBanner.innerHTML = `
+                        <span class="text-xl">🔴</span>
+                        <div>
+                            <strong class="font-bold text-amber-300 block">Restaurant is Currently Closed for Walk-ins</strong>
+                            <span>Dine-in opens at 11:00 AM IST. You can reserve your table for upcoming operating hours (11:00 AM – 11:30 PM)!</span>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        // 6. Dynamic Table Loader
+        async function loadTablesIntoSelect() {
+            const tableSelect = document.getElementById('res-table');
+            if (!tableSelect) return;
+
+            try {
+                const targetRes = currentResId || 'D360-RJY-1997';
+                const { data, error } = await activeSupabase
+                    .from('restaurant_tables')
+                    .select('*')
+                    .or(`restaurant_id.eq.${targetRes},restaurant_id.eq.D360-KAT-8315`)
+                    .order('created_at', { ascending: true });
+
+                if (!error && data && data.length > 0) {
+                    tableSelect.innerHTML = data.map(t => `
+                        <option value="${t.table_name || ('Table ' + t.id)}">
+                            ${t.table_name || ('Table ' + t.id)} (${t.seating_capacity || 4}-Seater ${t.section ? '• ' + t.section : ''})
+                        </option>
+                    `).join('');
+                    return;
+                }
+            } catch (err) {
+                console.warn('Error loading dynamic tables:', err);
+            }
+
+            tableSelect.innerHTML = `
+                <option value="Table 1">Table 1 (4-Seater • Main Dining)</option>
+                <option value="Table 2">Table 2 (6-Seater Family • AC Hall)</option>
+                <option value="Table 3">Table 3 (4-Seater • Main Dining)</option>
+                <option value="Table 4">Table 4 (4-Seater • Outdoor)</option>
+                <option value="Table 5">Table 5 (8-Seater • VIP Section)</option>
+            `;
+        }
+
+        // 7. Live Booked Slots Engine & Overlap Validation
+        let activeReservationsForDate = [];
+
+        async function fetchDateReservations(dateStr) {
+            const countLabel = document.getElementById('booked-slots-count');
+            if (countLabel) countLabel.innerText = 'Checking bookings...';
+
+            try {
+                const { data, error } = await activeSupabase
+                    .from('table_reservations')
+                    .select('*')
+                    .eq('booking_date', dateStr)
+                    .neq('status', 'Cancelled');
+
+                if (!error && data) {
+                    activeReservationsForDate = data;
+                } else {
+                    activeReservationsForDate = [];
+                }
+            } catch (err) {
+                console.warn('Error fetching reservations:', err);
+                activeReservationsForDate = [];
+            }
+
+            renderBookedSlotsUI();
+            handleTimeChange();
+        }
+
+        function renderBookedSlotsUI() {
+            const tableSelect = document.getElementById('res-table');
+            const dateInput = document.getElementById('res-date');
+            const listEl = document.getElementById('booked-slots-list');
+            const countLabel = document.getElementById('booked-slots-count');
+            if (!tableSelect || !listEl || !dateInput) return;
+
+            const selectedTable = tableSelect.value;
+            const selectedDate = dateInput.value;
+
+            const cleanSelected = selectedTable.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const tableBookings = activeReservationsForDate.filter(b => {
+                const cleanB = (b.table_id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                return cleanB === cleanSelected || cleanB.includes(cleanSelected) || cleanSelected.includes(cleanB);
+            });
+
+            if (countLabel) {
+                countLabel.innerText = tableBookings.length > 0 
+                    ? `${tableBookings.length} booking(s) on ${selectedDate}` 
+                    : `All slots available on ${selectedDate}`;
+            }
+
+            if (tableBookings.length === 0) {
+                listEl.innerHTML = `
+                    <div class="p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-500/30 text-emerald-300 flex items-center gap-2">
+                        <span>✅</span>
+                        <span>All time slots are completely open for <strong>${selectedTable}</strong> on this date!</span>
+                    </div>
+                `;
+                return;
+            }
+
+            const slotsHtml = tableBookings.map(b => {
+                const s12 = formatTime12(b.start_time);
+                const eTime = b.end_time || addMinutesToTime(b.start_time, 75);
+                const e12 = formatTime12(eTime);
+                return `
+                    <div class="p-2.5 rounded-lg bg-red-950/40 border border-red-500/40 text-red-200 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                            <span class="font-bold text-white">${s12} – ${e12}</span>
+                            <span class="text-[11px] text-gray-400">(${b.customer_name ? 'Reserved: ' + b.customer_name : 'Booked'})</span>
+                        </div>
+                        <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-red-900/60 text-red-300 border border-red-700/50">
+                            Slot Reserved
+                        </span>
+                    </div>
+                `;
+            }).join('');
+
+            const firstBooking = tableBookings[0];
+            const firstStart = formatTime12(firstBooking.start_time);
+            const lastBooking = tableBookings[tableBookings.length - 1];
+            const lastEnd = formatTime12(lastBooking.end_time || addMinutesToTime(lastBooking.start_time, 75));
+
+            listEl.innerHTML = `
+                ${slotsHtml}
+                <div class="p-2.5 rounded-lg bg-amber-950/20 border border-amber-500/30 text-amber-200 text-[11px] flex items-center gap-1.5 mt-2">
+                    <span>💡</span>
+                    <span>Available Windows: You can book before <strong>${firstStart}</strong> (e.g. 09:00 - 10:00), after <strong>${lastEnd}</strong>, or in-between gaps!</span>
+                </div>
+            `;
+        }
+
+        window.handleDateOrTableChange = function() {
+            const dateInput = document.getElementById('res-date');
+            if (dateInput && dateInput.value) {
+                fetchDateReservations(dateInput.value);
+            }
+        };
+
+        window.handleTimeChange = function() {
+            const startInput = document.getElementById('res-time');
+            const endInput = document.getElementById('res-end-time');
+            const tableSelect = document.getElementById('res-table');
+            const alertBox = document.getElementById('slot-conflict-alert');
+            const submitBtn = document.getElementById('res-submit-btn');
+
+            if (!startInput || !endInput || !tableSelect || !alertBox || !submitBtn) return;
+
+            const startTime = startInput.value;
+            let endTime = endInput.value;
+
+            if (startTime && !endTime) {
+                endTime = addMinutesToTime(startTime, 75);
+                endInput.value = endTime;
+            }
+
+            if (!startTime || !endTime) {
+                alertBox.classList.add('hidden');
+                submitBtn.disabled = false;
+                return;
+            }
+
+            if (endTime <= startTime) {
+                alertBox.className = 'sm:col-span-2 p-3.5 rounded-xl border border-red-500/60 bg-red-950/50 text-red-200 text-xs font-semibold leading-relaxed';
+                alertBox.innerHTML = `⚠️ End time must be later than start time!`;
+                alertBox.classList.remove('hidden');
+                submitBtn.disabled = true;
+                return;
+            }
+
+            const selectedTable = tableSelect.value;
+            const cleanSelected = selectedTable.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+            const conflict = activeReservationsForDate.find(b => {
+                const cleanB = (b.table_id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                const tableMatch = cleanB === cleanSelected || cleanB.includes(cleanSelected) || cleanSelected.includes(cleanB);
+                if (!tableMatch) return false;
+                return isTimeOverlapping(startTime, endTime, b.start_time, b.end_time);
+            });
+
+            if (conflict) {
+                const conflictStart = formatTime12(conflict.start_time);
+                const conflictEnd = formatTime12(conflict.end_time || addMinutesToTime(conflict.start_time, 75));
+
+                alertBox.className = 'sm:col-span-2 p-3.5 rounded-xl border border-red-500 bg-red-950/80 text-red-200 text-xs font-semibold leading-relaxed shadow-lg';
+                alertBox.innerHTML = `
+                    <div class="flex items-start gap-2">
+                        <span class="text-base">❌</span>
+                        <div>
+                            <strong class="text-red-300 block mb-0.5">Time Range Conflict on ${selectedTable}!</strong>
+                            <span>This table is already reserved between <strong>${conflictStart} – ${conflictEnd}</strong>.</span>
+                            <div class="mt-1 text-amber-300 text-[11px]">
+                                👉 You can book before <strong>${conflictStart}</strong>, after <strong>${conflictEnd}</strong>, or choose a different table above!
+                            </div>
+                        </div>
+                    </div>
+                `;
+                alertBox.classList.remove('hidden');
+                submitBtn.disabled = true;
+            } else {
+                alertBox.className = 'sm:col-span-2 p-3.5 rounded-xl border border-emerald-500/60 bg-emerald-950/50 text-emerald-300 text-xs font-semibold leading-relaxed';
+                alertBox.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <span class="text-base">✅</span>
+                        <span><strong>${formatTime12(startTime)} to ${formatTime12(endTime)}</strong> is available for <strong>${selectedTable}</strong>! No overlapping reservations.</span>
+                    </div>
+                `;
+                alertBox.classList.remove('hidden');
+                submitBtn.disabled = false;
+            }
+        };
+
+        // 8. Table Reservation Submission Handler
+        window.handleReservation = async function(event) {
+            event.preventDefault();
+            
+            const name = document.getElementById('res-name').value.trim();
+            const phone = document.getElementById('res-phone').value.trim();
+            const bookingDate = document.getElementById('res-date').value;
+            const startTime = document.getElementById('res-time').value;
+            const endTime = document.getElementById('res-end-time').value || addMinutesToTime(startTime, 75);
+            const tableId = document.getElementById('res-table').value;
+            const submitBtn = document.getElementById('res-submit-btn');
+
+            if (!name || !phone || !bookingDate || !startTime || !endTime || !tableId) {
+                alert("Please fill in all reservation fields.");
+                return;
+            }
+
+            if (endTime <= startTime) {
+                alert("End time must be after Start time.");
+                return;
+            }
+
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerText = 'Verifying Slot Availability...';
+            }
+
+            // Fresh database conflict check to prevent race condition
+            try {
+                const { data: latestBookings, error: checkErr } = await activeSupabase
+                    .from('table_reservations')
+                    .select('*')
+                    .eq('booking_date', bookingDate)
+                    .neq('status', 'Cancelled');
+
+                if (!checkErr && latestBookings) {
+                    const cleanSelected = tableId.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    const hasConflict = latestBookings.some(b => {
+                        const cleanB = (b.table_id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                        const tableMatch = cleanB === cleanSelected || cleanB.includes(cleanSelected) || cleanSelected.includes(cleanB);
+                        if (!tableMatch) return false;
+                        return isTimeOverlapping(startTime, endTime, b.start_time, b.end_time);
+                    });
+
+                    if (hasConflict) {
+                        alert(`❌ Conflict: ${tableId} was just reserved for this time range. Please choose another slot before or after, or pick another table!`);
+                        if (submitBtn) {
+                            submitBtn.disabled = false;
+                            submitBtn.innerText = 'Confirm Reservation';
+                        }
+                        fetchDateReservations(bookingDate);
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.warn('Double check error:', err);
+            }
+
+            if (submitBtn) {
+                submitBtn.innerText = 'Saving Reservation...';
+            }
+
+            const targetRes = currentResId || 'D360-RJY-1997';
+
+            const { error } = await activeSupabase
+                .from('table_reservations')
+                .insert([{
+                    restaurant_id: targetRes,
+                    customer_name: name,
+                    phone: phone,
+                    table_id: tableId,
+                    booking_date: bookingDate,
+                    start_time: startTime,
+                    end_time: endTime,
+                    status: 'Confirmed'
+                }]);
+
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerText = 'Confirm Reservation';
+            }
+
+            if (error) {
+                console.error('Reservation Error:', error.message);
+                alert('Reservation failed: ' + error.message);
+            } else {
+                const cleanPhone = phone.replace(/\D/g, '');
+                const timeRangeFormatted = `${formatTime12(startTime)} - ${formatTime12(endTime)}`;
+                const whatsappMessage = `Hello *${name}*, your table reservation at *Royal Spice* is confirmed!%0A%0A*Table:* ${tableId}%0A*Date:* ${bookingDate}%0A*Time Range:* ${timeRangeFormatted}%0A%0AThank you for booking with us!`;
+                const whatsappUrl = `https://wa.me/91${cleanPhone}?text=${whatsappMessage}`;
+                window.open(whatsappUrl, '_blank');
+
+                alert(`🎉 Table Successfully Reserved for ${name}!\nTable: ${tableId}\nTime: ${timeRangeFormatted}\nConfirmation sent to WhatsApp.`);
+                document.getElementById('reservation-form').reset();
+
+                // Re-apply today's date & default times
+                const now = new Date();
+                const istDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now);
+                document.getElementById('res-date').value = istDateStr;
+                document.getElementById('res-time').value = "12:00";
+                document.getElementById('res-end-time').value = "13:15";
+
+                fetchDateReservations(bookingDate);
+            }
+        };
+    </script>
+</body>
+</html>

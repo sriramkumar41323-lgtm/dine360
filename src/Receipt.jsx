@@ -1,10 +1,13 @@
+import { formatDisplayTicketNumber } from './utils/ticketSequence';
+
 export default function Receipt({ ticket }) {
     if (!ticket) return null;
 
     const {
         ticketId = 1,
+        dailySeq = null,
         orderType = 'Dine-In',
-        createdAt = new Date().toLocaleString(),
+        createdAt = null,
         cart = [],
         subtotal = 0,
         cgst = 0,
@@ -12,8 +15,30 @@ export default function Receipt({ ticket }) {
         grandTotal = 0,
         restaurantName = 'Royal Spice',
         restaurantAddress = '123 Gourmet Street, Jubilee Hills, Hyderabad',
-        restaurantPhone = '+91 98765 43210'
+        restaurantPhone = '+91 98765 43210',
+        tableNumber = '',
+        captain = '',
+        paymentMethod = 'Cash'
     } = ticket;
+
+    const formattedDate = (() => {
+        try {
+            const dateObj = createdAt ? new Date(createdAt) : new Date();
+            return dateObj.toLocaleString('en-IN', {
+                timeZone: 'Asia/Kolkata',
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+            });
+        } catch {
+            return String(createdAt || '');
+        }
+    })();
+
+    const displayTicketNo = formatDisplayTicketNumber(ticketId, dailySeq);
 
     return (
         <div id="printable-receipt" className="bg-white text-black p-4 font-mono text-xs w-[300px] mx-auto border border-gray-200 shadow-sm leading-tight select-text">
@@ -32,12 +57,23 @@ export default function Receipt({ ticket }) {
             {/* Ticket Metadata */}
             <div className="space-y-0.5 text-[11px]">
                 <div className="flex justify-between font-bold">
-                    <span>TICKET #{ticketId}</span>
+                    <span>TICKET {displayTicketNo}</span>
                     <span>{orderType.toUpperCase()}</span>
                 </div>
+                {tableNumber && (
+                    <div className="flex justify-between font-bold text-black">
+                        <span>TABLE: {tableNumber}</span>
+                        {captain && <span className="text-[10px]">CAPT: {captain}</span>}
+                    </div>
+                )}
                 <div className="flex justify-between text-[10px] text-gray-600">
-                    <span>DATE: {createdAt}</span>
+                    <span>DATE: {formattedDate}</span>
                 </div>
+                {paymentMethod && (
+                    <div className="text-[10px] font-bold text-gray-800 pt-0.5">
+                        PAID VIA: {paymentMethod}
+                    </div>
+                )}
             </div>
 
             <div className="text-center font-bold text-[10px] my-1">

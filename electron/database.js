@@ -39,7 +39,7 @@ export function runMigrations(callback) {
             // Version 0 -> 1 Migration: Baseline tables & default seed data
             if (currentVersion < 1) {
                 console.log('Executing SQLite Schema Migration [Version 0 -> 1]...');
-                
+
                 db.run('BEGIN TRANSACTION');
 
                 // 1. inventory table
@@ -189,9 +189,9 @@ export function runMigrations(callback) {
             if (currentVersion < 3) {
                 console.log('Executing SQLite Schema Migration [Version 2 -> 3]...');
                 db.run('BEGIN TRANSACTION');
-                db.run("ALTER TABLE tickets ADD COLUMN status TEXT DEFAULT 'paid'", () => {});
-                db.run("ALTER TABLE tickets ADD COLUMN total_paid REAL DEFAULT 0", () => {});
-                db.run("ALTER TABLE tickets ADD COLUMN table_number TEXT", () => {});
+                db.run("ALTER TABLE tickets ADD COLUMN status TEXT DEFAULT 'paid'", () => { });
+                db.run("ALTER TABLE tickets ADD COLUMN total_paid REAL DEFAULT 0", () => { });
+                db.run("ALTER TABLE tickets ADD COLUMN table_number TEXT", () => { });
                 db.run('PRAGMA user_version = 3', (verErr) => {
                     if (verErr) {
                         db.run('ROLLBACK');
@@ -212,7 +212,7 @@ export function runMigrations(callback) {
             if (currentVersion < 4) {
                 console.log('Executing SQLite Schema Migration [Version 3 -> 4]...');
                 db.run('BEGIN TRANSACTION');
-                db.run("ALTER TABLE ticket_items ADD COLUMN kot_printed INTEGER DEFAULT 0", () => {});
+                db.run("ALTER TABLE ticket_items ADD COLUMN kot_printed INTEGER DEFAULT 0", () => { });
                 db.run('PRAGMA user_version = 4', (verErr) => {
                     if (verErr) {
                         db.run('ROLLBACK');
@@ -483,14 +483,14 @@ export function saveActivationData(data, callback) {
         db.run('BEGIN TRANSACTION');
         const sql = 'INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)';
         const stmt = db.prepare(sql);
-        
+
         stmt.run('is_registered', 'true');
         stmt.run('restaurant_name', restaurant_name || '');
         stmt.run('license_key', license_key || '');
         if (hardware_id) {
             stmt.run('hardware_id', String(hardware_id));
         }
-        
+
         stmt.finalize((err) => {
             if (err) {
                 db.run('ROLLBACK');
@@ -528,7 +528,7 @@ export function getOpenTickets(callback) {
             t.total_paid,
             t.created_at
         FROM tickets t
-        WHERE t.status = 'open'
+        WHERE t.status = 'open' OR t.status = 'bill_printed'
         ORDER BY t.ticket_id DESC
     `;
 
@@ -611,17 +611,21 @@ export function updateOpenTicket(ticketId, updatedData, callback) {
     const tax = Number(safeData.tax || 0);
     const grand_total = Number(safeData.grandTotal || safeData.grand_total || 0);
     const items = safeData.cartItems || safeData.items || [];
+    const tableNumber = safeData.tableNumber || safeData.table_number || null;
+    const status = safeData.status || null;
 
     db.serialize(() => {
         db.run('BEGIN TRANSACTION');
 
         const updateSql = `
             UPDATE tickets
-            SET subtotal = ?, tax = ?, grand_total = ?
-            WHERE ticket_id = ? AND status = 'open'
+            SET subtotal = ?, tax = ?, grand_total = ?,
+                table_number = COALESCE(?, table_number),
+                status = COALESCE(?, status)
+            WHERE ticket_id = ? AND (status = 'open' OR status = 'bill_printed')
         `;
 
-        db.run(updateSql, [subtotal, tax, grand_total, ticketId], function (err) {
+        db.run(updateSql, [subtotal, tax, grand_total, tableNumber, status, ticketId], function (err) {
             if (err) {
                 db.run('ROLLBACK');
                 return callback(err);

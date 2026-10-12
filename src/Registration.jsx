@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { supabase } from './supabaseClient';
 
 const ipcRenderer = typeof window !== 'undefined' && window.require ? window.require('electron').ipcRenderer : null;
 
@@ -69,7 +70,6 @@ export default function Registration({ onRegistered, onNavigate }) {
 
                 // Sync directly to Supabase cloud
                 try {
-                    const { supabase } = await import('./lib/supabase.js');
                     await supabase.from('restaurants').upsert({
                         restaurant_id: randId,
                         name: restaurantName,

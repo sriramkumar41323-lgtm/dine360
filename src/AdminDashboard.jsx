@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from './supabaseClient';
+import { formatDisplayTicketNumber } from './utils/ticketSequence';
 
 const ipcRenderer = typeof window !== 'undefined' && window.require ? window.require('electron').ipcRenderer : null;
 
@@ -11,14 +12,120 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
     const [selectedTicket, setSelectedTicket] = useState(null);
     const [backupStatus, setBackupStatus] = useState(null);
     const [reservations, setReservations] = useState([]);
+    const [isStoreOpen, setIsStoreOpen] = useState(true);
+    const [isTogglingStore, setIsTogglingStore] = useState(false);
+    const [storeStatusMsg, setStoreStatusMsg] = useState(null);
+    const [activeTab, setActiveTab] = useState('sales'); // 'sales' | 'reservations'
+    const [resFilter, setResFilter] = useState('All');
+    const [resSearch, setResSearch] = useState('');
+
+    // ─── Fetch Store Open/Closed Status ────────────────────────────────────────
+    const fetchStoreStatus = useCallback(async () => {
+        try {
+            const resId = localStorage.getItem('dine360_restaurant_id') || 'D360-RJY-1997';
+            const { data, error } = await supabase
+                .from('restaurants')
+                .select('is_active')
+                .eq('restaurant_id', resId)
+                .maybeSingle();
+            if (!error && data) {
+                if (typeof data.is_active === 'boolean') {
+                    setIsStoreOpen(data.is_active);
+                }
+            }
+        } catch (err) {
+            console.error('Error fetching store status:', err);
+        }
+    }, []);
+
+    // ─── Toggle Store Open/Closed Online ────────────────────────────────────────
+    const handleToggleStoreStatus = async () => {
+        setIsTogglingStore(true);
+        try {
+            const resId = localStorage.getItem('dine360_restaurant_id') || 'D360-RJY-1997';
+            const nextState = !isStoreOpen;
+            const { error } = await supabase
+                .from('restaurants')
+                .update({ is_active: nextState, updated_at: new Date().toISOString() })
+                .eq('restaurant_id', resId);
+            if (error) throw error;
+            setIsStoreOpen(nextState);
+            setStoreStatusMsg(nextState ? 'Store is now OPEN online for customers' : 'Store is now CLOSED online (Bookings blocked)');
+            setTimeout(() => setStoreStatusMsg(null), 3500);
+        } catch (err) {
+            console.error('Failed to toggle store status:', err);
+            alert('Failed to update store status. Check connection.');
+        } finally {
+            setIsTogglingStore(false);
+        }
+    };
+
+    // ─── Fetch All Table Reservations ───────────────────────────────────────────
+    const fetchReservations = useCallback(async () => {
+        try {
+            const { data, error } = await supabase
+                .from('table_reservations')
+                .select('*')
+                .order('booking_date', { ascending: false })
+                .order('start_time', { ascending: true });
+            if (!error && data) {
+                setReservations(data);
+            }
+        } catch (err) {
+            console.error('Error loading table reservations:', err);
+        }
+    }, []);
+
+    // ─── Update Reservation Status (Confirmed / Completed / Cancelled) ──────────
+    const handleUpdateReservationStatus = async (id, newStatus) => {
+        try {
+            const { error } = await supabase
+                .from('table_reservations')
+                .update({ status: newStatus })
+                .eq('id', id);
+            if (error) throw error;
+            setReservations(prev => prev.map(r => r.id === id ? { ...r, status: newStatus } : r));
+        } catch (err) {
+            console.error('Error updating reservation:', err);
+            alert('Could not update reservation status.');
+        }
+    };
+
+    // ─── Delete Reservation ─────────────────────────────────────────────────────
+    const handleDeleteReservation = async (id) => {
+        if (!window.confirm('Are you sure you want to delete this table reservation?')) return;
+        try {
+            const { error } = await supabase
+                .from('table_reservations')
+                .delete()
+                .eq('id', id);
+            if (error) throw error;
+            setReservations(prev => prev.filter(r => r.id !== id));
+        } catch (err) {
+            console.error('Error deleting reservation:', err);
+            alert('Could not delete reservation.');
+        }
+    };
 
     useEffect(() => {
-        async function fetchReservations() {
-            const { data } = await supabase.from('table_reservations').select('*');
-            if (data) setReservations(data);
-        }
+        fetchStoreStatus();
         fetchReservations();
-    }, []);
+
+        // Realtime subscription for instant multi-device syncing
+        const resChannel = supabase
+            .channel('admin_dashboard_realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'table_reservations' }, () => {
+                fetchReservations();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'restaurants' }, () => {
+                fetchStoreStatus();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(resChannel);
+        };
+    }, [fetchStoreStatus, fetchReservations]);
 
     const handleManualBackup = async () => {
         setBackupStatus('Creating Backup...');
@@ -64,37 +171,208 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                 setLoading(false);
             });
             window.electronAPI.getDashboardData();
-        } else {
-            setTimeout(() => {
-                setMetrics({
-                    summary: {
-                        total_revenue: 1102.5,
-                        total_orders: 2,
-                        avg_order_value: 551.25,
-                        dine_in_revenue: 630,
-                        takeaway_revenue: 472.5,
-                        today_revenue: 1102.5,
-                        today_orders: 2
-                    },
-                    topItems: [
-                        { name: 'Butter Chicken', category: 'Main Course', total_qty: 1, total_sales: 450 },
-                        { name: 'Paneer Tikka', category: 'Starters', total_qty: 1, total_sales: 280 },
-                        { name: 'Garlic Naan', category: 'Breads', total_qty: 2, total_sales: 120 }
-                    ],
-                    categories: [
-                        { category: 'Main Course', total_qty: 1, total_sales: 450 },
-                        { category: 'Starters', total_qty: 1, total_sales: 280 },
-                        { category: 'Breads', total_qty: 2, total_sales: 120 }
-                    ],
-                    recentTickets: [
-                        { ticket_id: 4, order_type: 'Takeaway', subtotal: 450, tax: 22.5, grand_total: 472.5, payment_method: 'Cash', created_at: '2026-08-06 01:01:40', item_summary: 'Butter Chicken (x1)' },
-                        { ticket_id: 1, order_type: 'Dine-In', subtotal: 600, tax: 30, grand_total: 630, payment_method: 'Cash', created_at: '2026-08-06 00:40:24', item_summary: 'Paneer Tikka (x1), Garlic Naan (x2)' }
-                    ]
-                });
-                setLoading(false);
-            }, 0);
-        }
+        } //else {
+        //     setTimeout(() => {
+        //         setMetrics({
+        //             summary: {
+        //                 total_revenue: 1102.5,
+        //                 total_orders: 2,
+        //                 avg_order_value: 551.25,
+        //                 dine_in_revenue: 630,
+        //                 takeaway_revenue: 472.5,
+        //                 today_revenue: 1102.5,
+        //                 today_orders: 2
+        //             },
+        //             topItems: [
+        //                // { name: 'Butter Chicken', category: 'Main Course', total_qty: 1, total_sales: 450 },
+        //                // { name: 'Paneer Tikka', category: 'Starters', total_qty: 1, total_sales: 280 },
+        //                // { name: 'Garlic Naan', category: 'Breads', total_qty: 2, total_sales: 120 }
+        //             ],
+        //             categories: [
+        //                 // { category: 'Main Course', total_qty: 1, total_sales: 450 },
+        //                 // { category: 'Starters', total_qty: 1, total_sales: 280 },
+        //                 // { category: 'Breads', total_qty: 2, total_sales: 120 }
+        //             ],
+        //             recentTickets: [
+        //                 // { ticket_id: 4, order_type: 'Takeaway', subtotal: 450, tax: 22.5, grand_total: 472.5, payment_method: 'Cash', created_at: '2026-08-06 01:01:40', item_summary: 'Butter Chicken (x1)' },
+        //                 // { ticket_id: 1, order_type: 'Dine-In', subtotal: 600, tax: 30, grand_total: 630, payment_method: 'Cash', created_at: '2026-08-06 00:40:24', item_summary: 'Paneer Tikka (x1), Garlic Naan (x2)' }
+        //             ]
+        //         });
+        //         setLoading(false);
+        //     }, 0);
+        // }
     };
+
+    // ─── Direct Supabase Dashboard Fetch (Browser Mode) ─────────────────────────
+    const fetchDashboardFromSupabase = useCallback(async () => {
+        setLoading(true);
+        try {
+            const restaurantId = localStorage.getItem('dine360_restaurant_id');
+
+            // 1. Fetch all completed QR orders from restaurant_orders
+            const { data: qrOrders } = await supabase
+                .from('restaurant_orders')
+                .select('*')
+                .eq('status', 'Completed')
+                .order('created_at', { ascending: false });
+
+            // 2. Fetch all settled cashier tickets from sales_tickets
+            const { data: cashierTickets } = await supabase
+                .from('sales_tickets')
+                .select('*')
+                .eq('status', 'paid')
+                .order('created_at', { ascending: false });
+
+            // 3. Fetch all ticket items for top-item analytics
+            const { data: ticketItems } = await supabase
+                .from('sales_ticket_items')
+                .select('*');
+
+            // 4. Fetch menu/inventory to map real categories
+            const { data: inventoryItems } = await supabase
+                .from('inventory')
+                .select('item_id, name, category');
+
+            const itemCatLookup = {};
+            (inventoryItems || []).forEach(inv => {
+                if (inv.name) itemCatLookup[inv.name.trim().toLowerCase()] = inv.category;
+                if (inv.item_id) itemCatLookup[`id_${inv.item_id}`] = inv.category;
+            });
+
+            // Map cashier ticket items by ticket_id for Items Summary
+            const itemsByTicket = {};
+            (ticketItems || []).forEach(ti => {
+                if (!itemsByTicket[ti.ticket_id]) itemsByTicket[ti.ticket_id] = [];
+                itemsByTicket[ti.ticket_id].push(`${ti.item_name} (x${ti.quantity || 1})`);
+            });
+
+            // Indian Standard Time (IST) Today date calculation in 'YYYY-MM-DD'
+            const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+            const isTodayInIST = (isoStr) => {
+                if (!isoStr) return false;
+                try {
+                    return new Date(isoStr).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) === todayIST;
+                } catch {
+                    return false;
+                }
+            };
+
+            // ── Aggregate QR Orders ──
+            const qrList = (qrOrders || []);
+            const qrRevenue = qrList.reduce((s, o) => s + Number(o.total_amount || 0), 0);
+            const qrToday = qrList.filter(o => isTodayInIST(o.created_at));
+            const qrTodayRevenue = qrToday.reduce((s, o) => s + Number(o.total_amount || 0), 0);
+            const qrDineIn = qrList.filter(o => (o.order_type || 'Dine-In') === 'Dine-In');
+            const qrTakeaway = qrList.filter(o => (o.order_type || '') !== 'Dine-In');
+
+            // ── Aggregate Cashier Tickets ──
+            const cashList = (cashierTickets || []);
+            const cashRevenue = cashList.reduce((s, t) => s + Number(t.grand_total || 0), 0);
+            const cashToday = cashList.filter(t => isTodayInIST(t.created_at));
+            const cashTodayRevenue = cashToday.reduce((s, t) => s + Number(t.grand_total || 0), 0);
+            const cashDineIn = cashList.filter(t => t.order_type === 'Dine-In');
+            const cashTakeaway = cashList.filter(t => t.order_type !== 'Dine-In');
+
+            const totalRevenue = qrRevenue + cashRevenue;
+            const totalOrders = qrList.length + cashList.length;
+            const todayRevenue = qrTodayRevenue + cashTodayRevenue;
+            const todayOrders = qrToday.length + cashToday.length;
+
+            // ── Top Items from ticket_items + QR JSON items ──
+            const itemMap = {};
+
+            // From cashier sales_ticket_items
+            (ticketItems || []).forEach(i => {
+                const key = i.item_name || 'Unknown';
+                const cat = itemCatLookup[key.trim().toLowerCase()] || itemCatLookup[`id_${i.item_id}`] || 'Main Course';
+                if (!itemMap[key]) itemMap[key] = { name: key, category: cat, total_qty: 0, total_sales: 0 };
+                itemMap[key].total_qty += Number(i.quantity || 1);
+                itemMap[key].total_sales += Number(i.price_at_time || 0) * Number(i.quantity || 1);
+            });
+
+            // From QR restaurant_orders JSON items
+            qrList.forEach(order => {
+                let items = order.items;
+                if (typeof items === 'string') { try { items = JSON.parse(items); } catch { items = []; } }
+                (items || []).forEach(i => {
+                    const key = i.name || 'Unknown';
+                    const cat = i.category || itemCatLookup[key.trim().toLowerCase()] || 'Main Course';
+                    if (!itemMap[key]) itemMap[key] = { name: key, category: cat, total_qty: 0, total_sales: 0 };
+                    itemMap[key].total_qty += Number(i.qty || i.quantity || 1);
+                    itemMap[key].total_sales += Number(i.price || 0) * Number(i.qty || i.quantity || 1);
+                });
+            });
+
+            const allItems = Object.values(itemMap);
+            const topItems = [...allItems].sort((a, b) => b.total_sales - a.total_sales).slice(0, 8);
+
+            // ── Category aggregation ──
+            const catMap = {};
+            allItems.forEach(i => {
+                const cat = (i.category && i.category !== '-') ? i.category : 'General';
+                if (!catMap[cat]) catMap[cat] = { category: cat, total_qty: 0, total_sales: 0 };
+                catMap[cat].total_qty += i.total_qty;
+                catMap[cat].total_sales += i.total_sales;
+            });
+            const categories = Object.values(catMap).sort((a, b) => b.total_sales - a.total_sales);
+
+            // ── Recent Tickets (QR + Cashier merged, sorted by date) ──
+            const recentQR = qrList.slice(0, 20).map(o => {
+                let items = o.items;
+                if (typeof items === 'string') { try { items = JSON.parse(items); } catch { items = []; } }
+                const summary = (items || []).map(i => `${i.name} (x${i.qty || i.quantity || 1})`).join(', ');
+                return {
+                    ticket_id: `QR-${o.id?.slice(0, 6)}`,
+                    order_type: o.order_type || 'Dine-In',
+                    subtotal: Number(o.total_amount || 0),
+                    tax: 0,
+                    grand_total: Number(o.total_amount || 0),
+                    payment_method: 'QR Order',
+                    created_at: o.created_at,
+                    item_summary: summary || 'QR Order'
+                };
+            });
+
+            const recentCash = cashList.slice(0, 20).map(t => {
+                const summary = itemsByTicket[t.ticket_id]?.join(', ');
+                return {
+                    ticket_id: t.ticket_id,
+                    order_type: t.order_type,
+                    subtotal: Number(t.subtotal || 0),
+                    tax: Number(t.tax || 0),
+                    grand_total: Number(t.grand_total || 0),
+                    payment_method: t.payment_method || 'Cash',
+                    created_at: t.created_at,
+                    item_summary: summary || t.item_summary || 'Cashier Order'
+                };
+            });
+
+            const recentTickets = [...recentQR, ...recentCash]
+                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                .slice(0, 30);
+
+            setMetrics({
+                summary: {
+                    total_revenue: totalRevenue,
+                    total_orders: totalOrders,
+                    avg_order_value: totalOrders > 0 ? totalRevenue / totalOrders : 0,
+                    dine_in_revenue: qrDineIn.reduce((s, o) => s + Number(o.total_amount || 0), 0) +
+                                     cashDineIn.reduce((s, t) => s + Number(t.grand_total || 0), 0),
+                    takeaway_revenue: qrTakeaway.reduce((s, o) => s + Number(o.total_amount || 0), 0) +
+                                      cashTakeaway.reduce((s, t) => s + Number(t.grand_total || 0), 0),
+                    today_revenue: todayRevenue,
+                    today_orders: todayOrders
+                },
+                topItems,
+                categories,
+                recentTickets
+            });
+        } catch (err) {
+            console.error('Dashboard Supabase fetch error:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
 
     useEffect(() => {
         let isMounted = true;
@@ -112,42 +390,14 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
             });
             window.electronAPI.getDashboardData();
         } else {
-            setTimeout(() => {
-                if (isMounted) {
-                    setMetrics({
-                        summary: {
-                            total_revenue: 1102.5,
-                            total_orders: 2,
-                            avg_order_value: 551.25,
-                            dine_in_revenue: 630,
-                            takeaway_revenue: 472.5,
-                            today_revenue: 1102.5,
-                            today_orders: 2
-                        },
-                        topItems: [
-                            { name: 'Butter Chicken', category: 'Main Course', total_qty: 1, total_sales: 450 },
-                            { name: 'Paneer Tikka', category: 'Starters', total_qty: 1, total_sales: 280 },
-                            { name: 'Garlic Naan', category: 'Breads', total_qty: 2, total_sales: 120 }
-                        ],
-                        categories: [
-                            { category: 'Main Course', total_qty: 1, total_sales: 450 },
-                            { category: 'Starters', total_qty: 1, total_sales: 280 },
-                            { category: 'Breads', total_qty: 2, total_sales: 120 }
-                        ],
-                        recentTickets: [
-                            { ticket_id: 4, order_type: 'Takeaway', subtotal: 450, tax: 22.5, grand_total: 472.5, payment_method: 'Cash', created_at: '2026-08-06 01:01:40', item_summary: 'Butter Chicken (x1)' },
-                            { ticket_id: 1, order_type: 'Dine-In', subtotal: 600, tax: 30, grand_total: 630, payment_method: 'Cash', created_at: '2026-08-06 00:40:24', item_summary: 'Paneer Tikka (x1), Garlic Naan (x2)' }
-                        ]
-                    });
-                    setLoading(false);
-                }
-            }, 0);
+            // Browser mode: Direct Supabase fetch
+            fetchDashboardFromSupabase();
         }
 
         return () => {
             isMounted = false;
         };
-    }, []);
+    }, [fetchDashboardFromSupabase]);
 
     const summary = metrics?.summary || {};
     const topItems = metrics?.topItems || [];
@@ -156,13 +406,74 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
 
     const filteredTickets = recentTickets.filter(t => {
         const matchesType = filterType === 'All' || t.order_type === filterType;
-        const matchesSearch = searchQuery === '' || 
+        const matchesSearch = searchQuery === '' ||
             t.ticket_id.toString().includes(searchQuery) ||
             (t.item_summary && t.item_summary.toLowerCase().includes(searchQuery.toLowerCase()));
         return matchesType && matchesSearch;
     });
 
     const maxCategorySales = Math.max(...categories.map(c => c.total_sales || 0), 1);
+
+    // Format timestamps to clean Indian Standard Time (IST)
+    const formatIST = (isoString) => {
+        if (!isoString) return 'N/A';
+        try {
+            return new Date(isoString).toLocaleString('en-IN', {
+                timeZone: 'Asia/Kolkata',
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+            });
+        } catch {
+            return isoString;
+        }
+    };
+
+    // Helper to format 24h TIME string to 12h AM/PM
+    const formatTime12h = (timeStr) => {
+        if (!timeStr) return '';
+        try {
+            const parts = timeStr.split(':');
+            const h = parseInt(parts[0], 10);
+            const m = parseInt(parts[1], 10);
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            const hour12 = h % 12 || 12;
+            return `${hour12}:${String(m).padStart(2, '0')} ${ampm}`;
+        } catch {
+            return timeStr;
+        }
+    };
+
+    const formatReservationSlot = (startTime, endTime) => {
+        if (!startTime) return 'Not Specified';
+        const s = formatTime12h(startTime);
+        if (!endTime) return `${s} (Approx 75m)`;
+        const e = formatTime12h(endTime);
+        return `${s} – ${e}`;
+    };
+
+    const todayDateIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+    const filteredReservations = reservations.filter(r => {
+        const q = (resSearch || '').toLowerCase().trim();
+        const matchesSearch = !q ||
+            (r.customer_name && r.customer_name.toLowerCase().includes(q)) ||
+            (r.phone && r.phone.includes(q)) ||
+            (r.table_id && r.table_id.toLowerCase().includes(q));
+
+        if (!matchesSearch) return false;
+        if (resFilter === 'Today') return r.booking_date === todayDateIST;
+        if (resFilter === 'Confirmed') return r.status === 'Confirmed' || r.status === 'Pending';
+        if (resFilter === 'Completed') return r.status === 'Completed';
+        if (resFilter === 'Cancelled') return r.status === 'Cancelled';
+        return true;
+    });
+
+    const activeReservationsCount = reservations.filter(r => r.status === 'Confirmed' || r.status === 'Pending').length;
+    const todayReservationsCount = reservations.filter(r => r.booking_date === todayDateIST).length;
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
@@ -177,7 +488,7 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                     </button>
                     <div>
                         <h1 className="text-2xl font-bold text-gray-900">Admin Sales Dashboard</h1>
-                        <p className="text-xs text-gray-500 font-medium">Real-time revenue metrics & Database audit</p>
+                        <p className="text-xs text-gray-500 font-medium">Real-time revenue metrics & Table Reservations audit</p>
                     </div>
                 </div>
 
@@ -186,6 +497,22 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                         <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                         <span>👤 {currentUser?.name || 'Staff'} ({currentUser?.role === 'manager' ? 'Manager' : 'Cashier'})</span>
                     </div>
+
+                    {/* Store Open / Closed Status Live Toggle */}
+                    <button
+                        onClick={handleToggleStoreStatus}
+                        disabled={isTogglingStore}
+                        className={`px-3 py-1.5 rounded-lg border font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-xs ${
+                            isStoreOpen 
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100' 
+                                : 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100 animate-pulse'
+                        }`}
+                        title="Click to toggle restaurant Open/Closed status on website"
+                    >
+                        <span className={`w-2.5 h-2.5 rounded-full ${isStoreOpen ? 'bg-emerald-500 ring-2 ring-emerald-200' : 'bg-rose-500 ring-2 ring-rose-200'}`}></span>
+                        <span>{isTogglingStore ? 'Updating...' : isStoreOpen ? '🟢 Store: OPEN' : '🔴 Store: CLOSED'}</span>
+                    </button>
+
                     {backupStatus && (
                         <span className="text-xs font-bold text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-200 animate-pulse">
                             {backupStatus}
@@ -204,10 +531,14 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                         📦 Manage Inventory
                     </button>
                     <button
-                        onClick={() => loadDataFromIPC(true)}
+                        onClick={() => {
+                            loadDataFromIPC(true);
+                            fetchReservations();
+                            fetchStoreStatus();
+                        }}
                         className="px-4 py-2 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-semibold text-sm transition-all flex items-center gap-1.5 cursor-pointer"
                     >
-                        🔄 Refresh Data
+                        🔄 Refresh
                     </button>
                     <button
                         onClick={() => onNavigate('lock')}
@@ -218,6 +549,48 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                 </div>
             </header>
 
+            {/* Subheader Tab Navigation */}
+            <div className="bg-white border-b border-gray-200 px-8 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setActiveTab('sales')}
+                        className={`px-4 py-2 rounded-lg font-bold text-xs md:text-sm transition-all flex items-center gap-2 cursor-pointer ${
+                            activeTab === 'sales'
+                                ? 'bg-emerald-600 text-white shadow-xs'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                    >
+                        <span>📊 Sales & Financials</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('reservations')}
+                        className={`px-4 py-2 rounded-lg font-bold text-xs md:text-sm transition-all flex items-center gap-2 cursor-pointer ${
+                            activeTab === 'reservations'
+                                ? 'bg-emerald-600 text-white shadow-xs'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                    >
+                        <span>🍽️ Table Reservations</span>
+                        {activeReservationsCount > 0 && (
+                            <span className="bg-amber-400 text-slate-900 text-xs px-2 py-0.5 rounded-full font-extrabold shadow-xs">
+                                {activeReservationsCount}
+                            </span>
+                        )}
+                    </button>
+                </div>
+
+                <div className="flex items-center gap-3 text-xs">
+                    {storeStatusMsg && (
+                        <span className="font-bold px-3 py-1 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-full animate-pulse">
+                            ✓ {storeStatusMsg}
+                        </span>
+                    )}
+                    <span className="text-gray-500 font-medium hidden sm:inline">
+                        Online Booking Status: <strong className={isStoreOpen ? 'text-emerald-700' : 'text-rose-700'}>{isStoreOpen ? 'Accepting Reservations' : 'Online Store Closed'}</strong>
+                    </span>
+                </div>
+            </div>
+
             {loading ? (
                 <div className="flex-1 flex items-center justify-center p-12">
                     <div className="text-center">
@@ -227,7 +600,193 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                 </div>
             ) : (
                 <main className="flex-1 p-8 max-w-7xl w-full mx-auto space-y-8">
-                    {/* Key Metrics Cards */}
+                    {activeTab === 'reservations' ? (
+                        <div className="space-y-6">
+                            {/* Reservation Stat Cards */}
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+                                <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Total Bookings</span>
+                                    <div className="text-3xl font-extrabold text-gray-900 mt-2">{reservations.length}</div>
+                                    <span className="text-xs text-gray-500 mt-2">All time customer bookings</span>
+                                </div>
+                                <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-blue-500">Today's Bookings</span>
+                                    <div className="text-3xl font-extrabold text-blue-700 mt-2">{todayReservationsCount}</div>
+                                    <span className="text-xs text-gray-500 mt-2">Reserved for {todayDateIST}</span>
+                                </div>
+                                <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-500">Active / Confirmed</span>
+                                    <div className="text-3xl font-extrabold text-emerald-700 mt-2">{activeReservationsCount}</div>
+                                    <span className="text-xs text-gray-500 mt-2">Awaiting customer arrival</span>
+                                </div>
+                                <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Completed / Cancelled</span>
+                                    <div className="text-3xl font-extrabold text-gray-600 mt-2">
+                                        {reservations.filter(r => r.status === 'Completed' || r.status === 'Cancelled').length}
+                                    </div>
+                                    <span className="text-xs text-gray-500 mt-2">Finished or released tables</span>
+                                </div>
+                            </div>
+
+                            {/* Reservations Table Container */}
+                            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                                <div className="px-6 py-5 border-b border-gray-100 bg-gray-50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                    <div>
+                                        <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+                                            <span>🍽️ Table Reservations Audit</span>
+                                            <span className="text-xs font-semibold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full">
+                                                Live Sync
+                                            </span>
+                                        </h3>
+                                        <p className="text-xs text-gray-500">View reserved tables, scheduled time ranges & conflict preventions</p>
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <div className="flex bg-white border border-gray-200 rounded-lg p-1 text-xs font-semibold text-gray-600">
+                                            {['All', 'Today', 'Confirmed', 'Completed', 'Cancelled'].map((f) => (
+                                                <button
+                                                    key={f}
+                                                    onClick={() => setResFilter(f)}
+                                                    className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                                                        resFilter === f
+                                                            ? 'bg-emerald-600 text-white shadow-xs'
+                                                            : 'hover:bg-gray-100 text-gray-600'
+                                                    }`}
+                                                >
+                                                    {f}
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        <input
+                                            type="text"
+                                            placeholder="Search table, name, phone..."
+                                            value={resSearch}
+                                            onChange={(e) => setResSearch(e.target.value)}
+                                            className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-800 focus:outline-none w-56 font-medium"
+                                        />
+
+                                        <button
+                                            onClick={fetchReservations}
+                                            className="p-2 bg-white border border-gray-200 hover:bg-gray-100 text-gray-700 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                                            title="Reload Reservations"
+                                        >
+                                            🔄
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-sm text-gray-600">
+                                        <thead className="bg-gray-100 text-gray-700 uppercase text-xs font-bold tracking-wider">
+                                            <tr>
+                                                <th className="px-6 py-3.5">Table</th>
+                                                <th className="px-6 py-3.5">Customer</th>
+                                                <th className="px-6 py-3.5">Booking Date</th>
+                                                <th className="px-6 py-3.5">Reserved Time Window</th>
+                                                <th className="px-6 py-3.5">Party Size</th>
+                                                <th className="px-6 py-3.5">Status</th>
+                                                <th className="px-6 py-3.5 text-right">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {filteredReservations.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan="7" className="text-center py-12 text-gray-400 font-medium">
+                                                        <div className="text-3xl mb-2">🍽️</div>
+                                                        No reservations found matching the current filter.
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                filteredReservations.map((r) => {
+                                                    const isToday = r.booking_date === todayDateIST;
+                                                    return (
+                                                        <tr key={r.id} className="hover:bg-gray-50/80 transition-colors">
+                                                            <td className="px-6 py-4">
+                                                                <span className="px-3 py-1 bg-indigo-50 text-indigo-700 font-extrabold rounded-lg border border-indigo-200 text-xs">
+                                                                    {r.table_id || 'Table'}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <div className="font-bold text-gray-900">{r.customer_name || 'Guest'}</div>
+                                                                <a
+                                                                    href={`tel:${r.phone}`}
+                                                                    className="text-xs font-semibold text-emerald-600 hover:underline flex items-center gap-1 mt-0.5"
+                                                                >
+                                                                    📞 {r.phone}
+                                                                </a>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <div className="font-semibold text-gray-800 flex items-center gap-1.5">
+                                                                    <span>{r.booking_date}</span>
+                                                                    {isToday && (
+                                                                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-extrabold rounded-full">
+                                                                            TODAY
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="text-[11px] text-gray-400">
+                                                                    Booked {formatIST(r.created_at)}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <div className="px-2.5 py-1 bg-amber-50 border border-amber-200 text-amber-900 font-extrabold text-xs rounded-md inline-block">
+                                                                    ⏰ {formatReservationSlot(r.start_time, r.end_time)}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4 font-semibold text-gray-700">
+                                                                👥 {r.guests || 2} Persons
+                                                            </td>
+                                                            <td className="px-6 py-4">
+                                                                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                                                                    r.status === 'Confirmed' || r.status === 'Pending'
+                                                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                                        : r.status === 'Completed'
+                                                                        ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                                                        : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                                                }`}>
+                                                                    {r.status || 'Confirmed'}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4 text-right space-x-1.5 whitespace-nowrap">
+                                                                {r.status !== 'Completed' && (
+                                                                    <button
+                                                                        onClick={() => handleUpdateReservationStatus(r.id, 'Completed')}
+                                                                        className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded font-semibold text-xs transition-colors cursor-pointer"
+                                                                        title="Mark table freed & completed"
+                                                                    >
+                                                                        ✓ Complete
+                                                                    </button>
+                                                                )}
+                                                                {r.status !== 'Cancelled' && (
+                                                                    <button
+                                                                        onClick={() => handleUpdateReservationStatus(r.id, 'Cancelled')}
+                                                                        className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded font-semibold text-xs transition-colors cursor-pointer"
+                                                                        title="Cancel this reservation"
+                                                                    >
+                                                                        ✕ Cancel
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    onClick={() => handleDeleteReservation(r.id)}
+                                                                    className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded font-semibold text-xs transition-colors cursor-pointer"
+                                                                    title="Delete record permanently"
+                                                                >
+                                                                    🗑
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            {/* Key Metrics Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-between">
                             <div>
@@ -306,7 +865,7 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                                                 <td className="px-6 py-4 font-semibold text-gray-700">{res.phone}</td>
                                                 <td className="px-6 py-4">
                                                     <span className="px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-bold">
-                                                        Table {res.table_id}
+                                                        {res.table_id?.toString().trim().toLowerCase().startsWith('table') ? res.table_id : `Table ${res.table_id}`}
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 font-medium text-gray-500">{res.booking_date} ({res.start_time})</td>
@@ -368,8 +927,8 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                                                     <span className="font-semibold text-gray-600">₹{Number(cat.total_sales || 0).toLocaleString('en-IN')} ({cat.total_qty} qty)</span>
                                                 </div>
                                                 <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
-                                                    <div 
-                                                        className="bg-emerald-500 h-full rounded-full transition-all duration-500" 
+                                                    <div
+                                                        className="bg-emerald-500 h-full rounded-full transition-all duration-500"
                                                         style={{ width: `${percent}%` }}
                                                     ></div>
                                                 </div>
@@ -433,7 +992,7 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                                     ) : (
                                         filteredTickets.map((t) => (
                                             <tr key={t.ticket_id} className="hover:bg-gray-50/80 transition-colors">
-                                                <td className="px-6 py-4 font-bold text-gray-900">#{t.ticket_id}</td>
+                                                <td className="px-6 py-4 font-bold text-gray-900" title={`ID: ${t.ticket_id}`}>{formatDisplayTicketNumber(t.ticket_id)}</td>
                                                 <td className="px-6 py-4">
                                                     <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${t.order_type === 'Dine-In' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
                                                         {t.order_type}
@@ -446,7 +1005,7 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                                                 <td className="px-6 py-4 font-extrabold text-emerald-600">
                                                     ₹{Number(t.grand_total || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                                                 </td>
-                                                <td className="px-6 py-4 text-xs font-medium text-gray-500">{t.created_at}</td>
+                                                <td className="px-6 py-4 text-xs font-medium text-gray-500">{formatIST(t.created_at)}</td>
                                                 <td className="px-6 py-4 text-right">
                                                     <button
                                                         onClick={() => setSelectedTicket(t)}
@@ -462,6 +1021,8 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                             </table>
                         </div>
                     </div>
+                    </>
+                    )}
                 </main>
             )}
 
@@ -471,8 +1032,8 @@ export default function AdminDashboard({ onNavigate, currentUser }) {
                     <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-gray-200">
                         <div className="flex justify-between items-center border-b border-gray-100 pb-4 mb-4">
                             <div>
-                                <h3 className="font-bold text-lg text-gray-900">Ticket #{selectedTicket.ticket_id} Details</h3>
-                                <p className="text-xs text-gray-400">{selectedTicket.created_at}</p>
+                                <h3 className="font-bold text-lg text-gray-900">Ticket {formatDisplayTicketNumber(selectedTicket.ticket_id)} Details</h3>
+                                <p className="text-xs text-gray-400">{formatIST(selectedTicket.created_at)}</p>
                             </div>
                             <button
                                 onClick={() => setSelectedTicket(null)}
